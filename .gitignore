@@ -1,0 +1,44 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+*.egg-info/
+dist/
+build/
+*.egg
+
+# Virtual environments
+venv/
+env/
+.venv/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Data (exclude large files)
+data/reports/
+data/*.pcap
+data/sources/abuseipdb_*.json
+data/sources/threatbook_*.json
+data/sources/state.json
+
+# Environment
+.env
+
+# Logs
+*.log
+logs/
+
+# Test files
+test_pcap.py
+test_threatbook.py
+check_sources.py
+update_sources.py

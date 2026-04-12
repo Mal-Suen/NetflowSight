@@ -1,0 +1,4 @@
+# Enterprise domains
+company.com
+partner.org
+vendor.net
