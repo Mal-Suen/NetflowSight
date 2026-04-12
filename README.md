@@ -1,329 +1,331 @@
 # 🔍 NetflowSight
 
-> **AI-Powered Network Traffic Analysis Platform**
-> 
-> A fusion of high-performance PCAP parsing, multi-engine threat detection, and intelligent reporting.
+**AI-Powered Network Traffic Analysis Platform** | **AI 驱动的网络流量分析平台**
 
 [![Python Version](https://img.shields.io/badge/python-3.9%2B-blue)](https://www.python.org/)
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
-[![Status](https://img.shields.io/badge/status-beta-orange)]()
+[![Status](https://img.shields.io/badge/status-active-brightgreen)]()
 
 ---
 
-## ✨ Features
+## 🇬🇧 English | 🇨🇳 中文
 
-### 🚀 High-Performance Parsing
-- **C-based NFStream engine**: 10x faster than pure Python parsers
-- **100+ automatic flow features**: Statistical metrics, DPI recognition, TCP flags
-- **Stream-based processing**: Memory efficient, handles GB-sized files
-- **Multi-core parallel**: Auto-scales to available CPU cores
+<details>
+<summary>🇨🇳 点击切换到中文版 / Click to switch to Chinese version</summary>
 
-### 🛡️ Multi-Engine Threat Detection
-- **DNS Threat Detection**: Unknown domains, tunneling, phishing indicators
-- **HTTP/HTTPS Detection**: POST anomalies, unusual ports, suspicious User-Agents
-- **Covert Channel Detection**: ICMP/DNS tunnels, unknown TLS, one-way exfiltration
-- **Behavioral Anomaly Detection**: Large transfers, suspicious comms, port scanning
+## 📖 项目简介
 
-### 🌐 Threat Intelligence
-- **AbuseIPDB Integration**: Real-time IP reputation checking
-- **Local Caching**: Reduces API calls, improves performance
-- **Configurable TTL**: Automatic cache expiration
+NetflowSight 是一个基于 **NFStream** 高性能解析引擎的智能网络流量分析平台。该项目旨在解决传统抓包工具（如 Wireshark）在大规模数据下分析困难、误报率高、缺乏关联分析的问题。
 
-### 🤖 ML Anomaly Detection
-- **Isolation Forest**: Unsupervised learning, no labeled data required
-- **Automatic Feature Selection**: 11 optimized features
-- **Anomaly Scoring**: Ranked by suspiciousness
+> **核心目标**：在 AI 处理数据包之前，先对 PCAP 进行一次智能预处理，生成结构化的分析报告，为 AI 深度分析提供高质量上下文。
 
-### 💬 AI-Powered Reporting (Optional)
-- **MCP Integration**: Natural language query support
-- **Smart Context Compression**: ~99% token reduction vs raw data
-- **Cost-Effective**: 10GB PCAP analysis costs ~$0.02
+### ✨ 核心特性
 
-### 📊 Rich Reporting
-- **Multiple Formats**: JSON, Markdown, Text
-- **CLI Output**: Beautiful terminal output with Rich
-- **Web API**: RESTful API for integration
+*   **🚀 高性能解析**：基于 NFStream C 语言底层，支持 GB 级 PCAP 秒级处理，100+ 自动流特征提取。
+*   **🎯 零误报策略**：采用本地黑名单情报库 + 微步/AbuseIPDB 智能缓存，只对已知威胁告警。
+*   **🤖 双报告生成**：同时生成人类可读报告和 AI 优化报告，自动包含建议分析提示词。
+*   **💾 智能情报缓存**：
+    *   **白名单**：知名服务永久保存（Google/AWS/Cloudflare 等）
+    *   **安全缓存**：安全 IP/域名 30 天缓存，避免重复 API 查询
+*   **🔌 插件化架构**：支持自定义检测引擎，轻松扩展新威胁类型。
+
+---
+
+## 🚀 快速开始
+
+### 1. 安装
+
+```bash
+# 克隆仓库
+git clone https://github.com/Mal-Suen/NetflowSight.git
+cd NetflowSight
+
+# 安装依赖
+pip install -e .
+```
+
+### 2. 配置
+
+```bash
+# 复制环境变量文件
+cp .env.example .env
+
+# 编辑 .env 添加 API Keys（可选，本地检测无需 API Key）
+ABUSEIPDB_API_KEY=your_key_here
+THREATBOOK_API_KEY=your_key_here
+```
+
+### 3. 运行分析
+
+```bash
+# 将 PCAP 文件放入 data/ 目录
+# 运行测试脚本
+python test_pcap.py
+```
+
+### 4. 查看结果
+
+分析完成后会生成两份报告：
+
+```
+data/reports/
+├── test_analysis_20260412_112007.json    # 人类可读报告
+└── test_analysis_20260412_112007_ai.json # AI 优化报告
+```
+
+---
+
+## 🏗️ 架构概览
+
+```
+NetflowSight/
+├── src/                          # 核心源码
+│   ├── core/                     # 核心解析层 (NFStream 封装)
+│   ├── engines/                  # 威胁检测引擎 (5 大引擎)
+│   │   ├── dns/                  # DNS 威胁检测 (黑名单、隧道、钓鱼、DGA)
+│   │   ├── http/                 # HTTP 威胁检测 (异常流量、端口、UA)
+│   │   ├── covert/               # 隐蔽通道检测 (ICMP/DNS 隧道、TLS)
+│   │   ├── behavior/             # 行为异常检测 (大流量、端口扫描)
+│   │   ├── smart_threat.py       # 微步在线 ThreatBook 智能检测
+│   │   └── abuseipdb_detector.py # AbuseIPDB 智能检测
+│   ├── datasource/               # 威胁情报管理 (数据源管理器)
+│   ├── intel/                    # 威胁情报客户端 (API 集成)
+│   ├── ml/                       # 机器学习层 (Isolation Forest)
+│   ├── report/                   # 报告生成 (人类 + AI 报告)
+│   ├── analyzer.py               # 主协调器
+│   └── cli.py                    # CLI 接口
+├── data/                         # 数据存储 (情报源 + 报告)
+└── docs/                         # 工程文档
+```
+
+---
+
+## 📊 分析流程
+
+```
+[1] 初始化数据源管理器
+    └→ 首次运行自动更新，后续询问用户
+        ↓
+[2] 加载本地威胁情报
+    └→ PhishTank, URLhaus, Spamhaus, 白名单缓存
+        ↓
+[3] 解析 PCAP 文件 (NFStream)
+    └→ 100+ 流特征提取
+        ↓
+[4] ML 异常检测 (Isolation Forest)
+        ↓
+[5] 🟢 本地威胁检测
+    └→ DNS, HTTP, Covert, Behavior 引擎
+        ↓
+[6] 🔵 API 威胁情报 (智能缓存)
+    └→ 微步在线 (域名) + AbuseIPDB (IP)
+        ↓
+[7] 生成报告
+    └→ 人类可读报告 + AI 优化报告
+```
+
+---
+
+## 🔧 配置说明
+
+### 环境变量
+
+| 变量名 | 说明 | 默认值 |
+|--------|------|--------|
+| `ABUSEIPDB_API_KEY` | AbuseIPDB API Key | 无 |
+| `THREATBOOK_API_KEY` | 微步在线 API Key | 无 |
+| `OPENAI_API_KEY` | OpenAI API Key (AI 报告) | 无 |
+| `STATISTICAL_ANALYSIS` | 启用统计分析 | `true` |
+| `N_DISSECTIONS` | DPI 解析包数 | `20` |
+| `DECODE_TUNNELS` | 启用隧道解码 | `true` |
+
+### 获取免费 API Key
+
+| 服务 | 免费额度 | 申请地址 |
+|------|---------|---------|
+| **AbuseIPDB** | 1,000 次/天 | https://www.abuseipdb.com/register |
+| **微步在线** | 1,000 次/天 | https://x.threatbook.com/register |
+
+---
+
+## 📚 文档
+
+*   [🚀 快速开始](docs/QUICK_START.md) - 5 分钟上手指南
+*   [📊 工程报告](docs/ENGINEERING_REPORT.md) - 完整架构设计
+*   [📁 数据源管理](docs/DATA_SOURCE_GUIDE.md) - 威胁情报配置指南
+
+---
+
+## 🤝 贡献
+
+欢迎提交 Issue 和 Pull Request！
+
+1. Fork 本仓库
+2. 创建特性分支 (`git checkout -b feature/amazing-feature`)
+3. 提交更改 (`git commit -m 'Add amazing feature'`)
+4. 推送到分支 (`git push origin feature/amazing-feature`)
+5. 创建 Pull Request
+
+---
+
+## 📄 许可证
+
+本项目基于 [MIT License](LICENSE) 开源。
+
+---
+
+**Made with ❤️ by Prometheus Projects Team**
+
+</details>
+
+---
+
+## 📖 Overview
+
+NetflowSight is an intelligent network traffic analysis platform based on the **NFStream** high-performance parsing engine. It aims to solve the problems of traditional packet capture tools (like Wireshark) such as difficulty in large-scale data analysis, high false positive rates, and lack of correlation analysis.
+
+> **Core Objective**: Perform intelligent preprocessing on PCAP data before AI processing, generating structured analysis reports to provide high-quality context for AI deep analysis.
+
+### ✨ Key Features
+
+*   **🚀 High-Performance Parsing**: Built on NFStream C-based engine, supports GB-level PCAP second-level processing with 100+ automatic flow feature extraction.
+*   **🎯 Zero False Positive Strategy**: Uses local blacklist intelligence library + ThreatBook/AbuseIPDB smart caching, only alerts on known threats.
+*   **🤖 Dual Report Generation**: Generates both human-readable and AI-optimized reports simultaneously, automatically includes suggested analysis prompts.
+*   **💾 Smart Intelligence Caching**:
+    *   **Whitelist**: Well-known services permanently saved (Google/AWS/Cloudflare, etc.)
+    *   **Safe Cache**: Safe IPs/domains cached for 30 days, avoiding repeated API queries
+*   **🔌 Plugin Architecture**: Supports custom detection engines, easily extensible for new threat types.
 
 ---
 
 ## 🚀 Quick Start
 
-### Installation
-
-#### Option 1: Using pip
-
-```bash
-pip install netflowsight
-```
-
-#### Option 2: Using Conda (Recommended)
+### 1. Installation
 
 ```bash
 # Clone repository
-git clone https://github.com/prometheus-projects/NetflowSight.git
+git clone https://github.com/Mal-Suen/NetflowSight.git
 cd NetflowSight
 
-# Create conda environment
-conda env create -f environment.yml
-conda activate netflowsight
+# Install dependencies
+pip install -e .
 ```
 
-### Configuration
+### 2. Configuration
 
 ```bash
-# Copy example environment file
+# Copy environment variables file
 cp .env.example .env
 
-# Edit .env and add your API keys (optional)
+# Edit .env to add API Keys (optional, local detection requires no API Key)
 ABUSEIPDB_API_KEY=your_key_here
-OPENAI_API_KEY=your_key_here
+THREATBOOK_API_KEY=your_key_here
 ```
 
-### Usage
-
-#### CLI: Analyze PCAP File
+### 3. Run Analysis
 
 ```bash
-# Basic analysis with text output
-netflowsight analyze capture.pcap
-
-# Save as Markdown report
-netflowsight analyze capture.pcap -o report.md -f markdown
-
-# Save as JSON
-netflowsight analyze capture.pcap -o report.json -f json
-
-# Disable ML or threat intel
-netflowsight analyze capture.pcap --no-ml
-netflowsight analyze capture.pcap --no-threat-intel
-
-# Verbose output
-netflowsight analyze capture.pcap -v
+# Place PCAP file in data/ directory
+# Run test script
+python test_pcap.py
 ```
 
-#### CLI: Explore PCAP
+### 4. View Results
 
-```bash
-# Show top flows
-netflowsight explore capture.pcap
+After analysis, two reports will be generated:
 
-# Filter by port
-netflowsight explore capture.pcap --port 443
-
-# Filter by IP
-netflowsight explore capture.pcap --ip 192.168.1.100
-
-# Filter by protocol
-netflowsight explore capture.pcap --protocol DNS
 ```
-
-#### CLI: Check IP Reputation
-
-```bash
-netflowsight check-ip 8.8.8.8
-```
-
-#### Python API
-
-```python
-from netflowsight.analyzer import NetflowSightAnalyzer
-
-# Initialize analyzer
-analyzer = NetflowSightAnalyzer(
-    pcap_file="capture.pcap",
-    enable_ml=True,
-    enable_threat_intel=True,
-)
-
-# Run analysis
-result = analyzer.analyze()
-
-# Print summary
-print(f"Total flows: {result.total_flows}")
-print(f"Threats found: {len(result.threats)}")
-print(f"ML anomalies: {result.anomaly_count}")
-
-# Generate report
-report = analyzer.generate_report(format="markdown", output_path="report.md")
+data/reports/
+├── test_analysis_20260412_112007.json    # Human-readable report
+└── test_analysis_20260412_112007_ai.json # AI-optimized report
 ```
 
 ---
 
-## 🏗️ Architecture
-
-```
-┌─────────────────────────────────────────────────┐
-│  User Interface (CLI / Web API / Python API)    │
-└───────────────────┬─────────────────────────────┘
-                    │
-┌───────────────────▼─────────────────────────────┐
-│  NetflowSightAnalyzer (Orchestrator)            │
-│  ┌───────────────────────────────────────────┐  │
-│  │ 1. FlowStreamAnalyzer (NFStream Engine)   │  │
-│  │ 2. Threat Detection Engines               │  │
-│  │    - DNS, HTTP, Covert, Behavioral        │  │
-│  │ 3. ML Anomaly Classifier                  │  │
-│  │ 4. Threat Intelligence Client             │  │
-│  │ 5. Report Generator                       │  │
-│  └───────────────────────────────────────────┘  │
-└───────────────────┬─────────────────────────────┘
-                    │
-┌───────────────────▼─────────────────────────────┐
-│  Output: JSON / Markdown / Text Reports         │
-└─────────────────────────────────────────────────┘
-```
-
----
-
-## 📁 Project Structure
+## 🏗️ Architecture Overview
 
 ```
 NetflowSight/
-├── src/
-│   └── netflowsight/
-│       ├── __init__.py
-│       ├── analyzer.py              # Main orchestrator
-│       ├── cli.py                   # CLI interface
-│       ├── core/
-│       │   ├── parser.py            # NFStream wrapper
-│       │   ├── models.py            # Data models
-│       │   └── config.py            # Configuration
-│       ├── engines/
-│       │   ├── dns/                 # DNS threat detection
-│       │   ├── http/                # HTTP threat detection
-│       │   ├── covert/              # Covert channel detection
-│       │   └── behavior/            # Behavioral anomaly detection
-│       ├── intel/
-│       │   ├── client.py            # Threat intelligence API
-│       │   └── cache.py             # Local cache
-│       ├── ml/
-│       │   └── classifier.py        # ML anomaly detection
-│       ├── ai/
-│       │   └── mcp_server.py        # MCP AI server
-│       └── report/
-│           └── generator.py         # Report generation
-├── tests/
-├── examples/
-├── docs/
-├── pyproject.toml
-├── environment.yml
-└── README.md
+├── src/                          # Core source code
+│   ├── core/                     # Core parsing layer (NFStream wrapper)
+│   ├── engines/                  # Threat detection engines (5 major engines)
+│   │   ├── dns/                  # DNS threat detection (blacklist, tunnel, phishing, DGA)
+│   │   ├── http/                 # HTTP threat detection (anomaly traffic, ports, UA)
+│   │   ├── covert/               # Covert channel detection (ICMP/DNS tunnel, TLS)
+│   │   ├── behavior/             # Behavioral anomaly detection (large traffic, port scan)
+│   │   ├── smart_threat.py       # ThreatBook smart detection
+│   │   └── abuseipdb_detector.py # AbuseIPDB smart detection
+│   ├── datasource/               # Threat intelligence management (DataSourceManager)
+│   ├── intel/                    # Threat intelligence clients (API integration)
+│   ├── ml/                       # Machine learning layer (Isolation Forest)
+│   ├── report/                   # Report generation (Human + AI reports)
+│   ├── analyzer.py               # Main orchestrator
+│   └── cli.py                    # CLI interface
+├── data/                         # Data storage (intelligence sources + reports)
+└── docs/                         # Engineering documentation
 ```
 
 ---
 
-## 🎯 Detection Engines
+## 📊 Analysis Pipeline
 
-### DNS Threat Detection
-| Detection | Description |
-|-----------|-------------|
-| Unknown Domains | Queries to domains not in safe list |
-| DNS Tunneling | Excessive queries to same domain |
-| Phishing Domains | Domains with suspicious TLDs or keywords |
-
-### HTTP Threat Detection
-| Detection | Description |
-|-----------|-------------|
-| POST Anomalies | Unusual response-to-request ratios |
-| Unusual Ports | Traffic on non-standard ports |
-| Suspicious UA | Automated tooling User-Agents |
-
-### Covert Channel Detection
-| Detection | Description |
-|-----------|-------------|
-| ICMP Tunnel | Large ICMP payloads |
-| DNS Exfiltration | Large DNS flows |
-| Unknown TLS | Unidentified encrypted traffic |
-| One-Way Transfer | Asymmetric data flows |
-
-### Behavioral Anomaly Detection
-| Detection | Description |
-|-----------|-------------|
-| Large Transfers | Flows exceeding threshold |
-| Suspicious Comms | Internal → unknown external |
-| Port Scanning | Many ports, few destinations |
-
----
-
-## 💰 Cost Analysis
-
-| PCAP Size | Local Processing | AI Tokens | AI Cost (GPT-4o-mini) |
-|-----------|-----------------|-----------|----------------------|
-| 1 GB | $0 | ~3,000 | $0.003 |
-| 10 GB | $0 | ~5,000 | $0.005 |
-| 100 GB | $0 | ~10,000 | $0.01 |
-
-**Key Optimization**: AI only receives compressed context (summary + top threats), not raw packet data.
+```
+[1] Initialize DataSourceManager
+    └→ Auto-update on first run, prompt user on subsequent runs
+        ↓
+[2] Load local threat intelligence
+    └→ PhishTank, URLhaus, Spamhaus, whitelist cache
+        ↓
+[3] Parse PCAP file (NFStream)
+    └→ 100+ flow feature extraction
+        ↓
+[4] ML Anomaly Detection (Isolation Forest)
+        ↓
+[5] 🟢 Local Threat Detection
+    └→ DNS, HTTP, Covert, Behavior engines
+        ↓
+[6] 🔵 API Threat Intelligence (Smart Caching)
+    └→ ThreatBook (domains) + AbuseIPDB (IPs)
+        ↓
+[7] Generate Reports
+    └→ Human-readable report + AI-optimized report
+```
 
 ---
 
 ## 🔧 Configuration
 
-See `.env.example` for all available options:
+### Environment Variables
 
-```bash
-# Threat Intelligence
-ABUSEIPDB_API_KEY=your_key_here
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `ABUSEIPDB_API_KEY` | AbuseIPDB API Key | None |
+| `THREATBOOK_API_KEY` | ThreatBook API Key | None |
+| `OPENAI_API_KEY` | OpenAI API Key (AI reports) | None |
+| `STATISTICAL_ANALYSIS` | Enable statistical analysis | `true` |
+| `N_DISSECTIONS` | Number of packets for DPI | `20` |
+| `DECODE_TUNNELS` | Enable tunnel decoding | `true` |
 
-# AI Configuration
-OPENAI_API_KEY=your_key_here
-AI_MODEL=gpt-4o-mini
+### Get Free API Keys
 
-# Analysis Settings
-STATISTICAL_ANALYSIS=true
-N_DISSECTIONS=20
-DECODE_TUNNELS=true
-
-# Performance
-NFSTREAM_N_METERS=0  # 0 = auto-detect
-
-# Caching
-THREAT_CACHE_ENABLED=true
-THREAT_CACHE_TTL_HOURS=24
-```
+| Service | Free Quota | Registration |
+|---------|-----------|--------------|
+| **AbuseIPDB** | 1,000 queries/day | https://www.abuseipdb.com/register |
+| **ThreatBook** | 1,000 queries/day | https://x.threatbook.com/register |
 
 ---
 
-## 🧪 Development
+## 📚 Documentation
 
-```bash
-# Install development dependencies
-pip install -e ".[dev]"
-
-# Run tests
-pytest tests/
-
-# Run with coverage
-pytest --cov=netflowsight tests/
-
-# Format code
-black src/
-ruff check src/
-```
-
----
-
-## 📚 References
-
-This project draws inspiration and design patterns from:
-
-- **NFStream**: High-performance flow parsing
-- **PCAP-Investigator**: Threat detection engines
-- **AdvancePcapXray**: Threat intelligence integration
-- **PCAP-Analyzer**: MCP AI integration
-- **Network-Anomaly-Detection**: ML classification
-
----
-
-## 📄 License
-
-MIT License - see [LICENSE](LICENSE) for details.
+*   [🚀 Quick Start](docs/QUICK_START.md) - 5-minute getting started guide
+*   [📊 Engineering Report](docs/ENGINEERING_REPORT.md) - Complete architecture design
+*   [📁 Data Source Guide](docs/DATA_SOURCE_GUIDE.md) - Threat intelligence configuration guide
 
 ---
 
 ## 🤝 Contributing
 
-Contributions are welcome! Please feel free to submit a Pull Request.
+Pull Requests and Issues are welcome!
 
 1. Fork the repository
 2. Create your feature branch (`git checkout -b feature/amazing-feature`)
@@ -333,11 +335,9 @@ Contributions are welcome! Please feel free to submit a Pull Request.
 
 ---
 
-## 🙏 Acknowledgments
+## 📄 License
 
-- NFStream team for the excellent parsing engine
-- AbuseIPDB for threat intelligence API
-- Open source PCAP analysis community
+This project is open-sourced under the [MIT License](LICENSE).
 
 ---
 
