@@ -1,31 +1,32 @@
-# NetflowSight 数据源管理指南
+# NetflowSight 数据源与威胁情报指南
 
 ## 📋 概述
 
-NetflowSight 使用本地威胁情报库来实现**零误报**的威胁检测。所有数据源由 `DataSourceManager` 统一管理。
+NetflowSight 使用多层威胁情报体系实现自动化威胁检测：本地黑名单、ML 域名分类器、以及 API 智能缓存。
 
 ---
 
-## 📊 数据源分类
+## 📊 检测层级
 
-| 类别 | 用途 | 示例 |
-|------|------|------|
-| **白名单** | 减少误报 | 企业内部域名、可信 IP、常用端口 |
-| **威胁情报** | 发现恶意活动 | PhishTank, URLhaus, Spamhaus |
-| **攻击特征** | 检测规则 | 钓鱼关键词、可疑 UA、恶意 TLD |
-| **自定义规则** | 企业特定需求 | 内部服务域名、合作伙伴 IP |
+| 层级 | 来源 | 是否需要 API | 说明 |
+|------|------|-------------|------|
+| **1. 黑名单** | DataSourceManager | ❌ | 本地维护的已知恶意域名/IP 库 |
+| **2. ML 分类器** | LightGBM 模型 | ❌ | 自动识别可疑域名（AUC 0.903） |
+| **3. 规则引擎** | 内置规则 | ❌ | DNS 隧道、DGA、HTTP 异常、行为异常 |
+| **4. API 复核** | ThreatBook | ✅ | ML 高危域名自动发送 API 复核 |
+| **5. API 查询** | AbuseIPDB | ✅ | 外部 IP 信誉查询（三级缓存） |
 
 ---
 
-## 🔄 默认数据源
+## 🔄 本地数据源
 
 | 名称 | 类别 | 更新频率 | 状态 |
 |------|------|---------|------|
 | **PhishTank** | 钓鱼域名 | 24h | ✅ 已启用 |
 | **URLhaus** | 恶意 URL | 12h | ✅ 已启用 |
 | **Spamhaus DROP** | 恶意 IP 段 | 24h | ✅ 已启用 |
-| **微步在线** | 域名威胁 | 按需 | ⚠️ 需 API Key |
-| **AbuseIPDB** | IP 信誉 | 按需 | ⚠️ 需 API Key |
+| **内置安全域名** | 白名单 | 静态 | ✅ 已启用 |
+| **内置可疑 UA** | 特征库 | 静态 | ✅ 已启用 |
 
 ---
 
@@ -33,127 +34,101 @@ NetflowSight 使用本地威胁情报库来实现**零误报**的威胁检测。
 
 ```
 data/sources/
-├── state.json                     # 数据源状态（元数据）
-├── abuseipdb_whitelist.json       # AbuseIPDB 白名单（永久）
-├── abuseipdb_safe_cache.json      # AbuseIPDB 安全缓存（30 天）
-├── threatbook_whitelist.json      # 微步白名单（永久）
-├── threatbook_safe_cache.json     # 微步安全缓存（30 天）
-├── custom_enterprise-domains.txt  # 企业自定义域名
-└── example_sources.json           # 示例配置
+├── state.json                            # 数据源状态（元数据）
+├── abuseipdb_whitelist.json              # AbuseIPDB 白名单（永久）
+├── abuseipdb_safe_cache.json             # AbuseIPDB 安全缓存（30 天）
+├── abuseipdb_malicious_cache.json        # AbuseIPDB 恶意缓存（90 天）
+├── threatbook_whitelist.json             # ThreatBook 白名单（永久）
+├── threatbook_safe_cache.json            # ThreatBook 安全缓存（30 天）
+├── custom_enterprise-domains.txt         # 企业自定义域名
+└── example_sources.json                  # 示例配置
 ```
 
 ---
 
-## 🔧 智能缓存机制
+## 🤖 ML 域名分类器
 
-### 微步在线 ThreatBook
+### 模型信息
 
-```
-查询域名 → 微步 API
-        ↓
-judgments 包含 "Whitelist" → ✅ 加入白名单（永久保存）
-        ↓
-安全但未标记白名单         → 🔒 加入安全缓存（30 天过期）
-        ↓
-可疑/恶意                  → 🔴 生成告警
-```
+| 属性 | 值 |
+|------|---|
+| **算法** | LightGBM |
+| **训练数据** | PhiUSIIL Phishing URL Dataset (235,795 样本) |
+| **特征数** | 15 个域名结构特征 |
+| **模型大小** | 286 KB |
+| **AUC** | 0.903 |
+| **精确率** | 95.2% |
 
-### AbuseIPDB
+### 特征列表
 
-```
-查询 IP → AbuseIPDB API
-        ↓
-abuse_score == 0 且是知名云服务 → ✅ 加入白名单（永久）
-        ↓
-abuse_score < 10               → 🔒 加入安全缓存（30 天）
-        ↓
-abuse_score >= 10              → 🔴 生成告警
-```
+| 特征 | 说明 |
+|------|------|
+| `domain_length` | 域名总长度 |
+| `sld_length` | 二级域名长度 |
+| `tld_length` | TLD 长度 |
+| `subdomain_count` | 子域名层数 |
+| `tld_is_common` | TLD 是否常见 |
+| `sld_entropy` | 二级域名信息熵（DGA 检测） |
+| `digit_ratio` | 数字占比 |
+| `alpha_ratio` | 字母占比 |
+| `hyphen_count` | 连字符数量 |
+| `max_consecutive` | 最大连续相同字符 |
+| `transition_ratio` | 数字/字母交替率 |
+| `vowel_ratio` | 元音占比 |
+| `is_ip` | 是否为 IP 地址 |
 
----
-
-## ⚙️ 启动行为
-
-### 首次运行
-
-自动更新所有数据源（无需询问）：
-
-```
-First run detected: Automatically updating data sources...
-✅ Initial data source update complete
-```
-
-### 后续运行
-
-交互式模式下会询问：
-
-```
-==================================================
-📦 Data Source Update Check
-==================================================
-Last update: 2026-04-12T09:23:54
-Enabled sources: 9
-
-Check for updates now? [Y/n]:
-```
-
----
-
-## 💡 最佳实践
-
-### 1. 定期更新
-
-建议每周至少运行一次完整更新：
+### 重新训练
 
 ```bash
-python update_sources.py
+pip install lightgbm scikit-learn
+python scripts/train_domain_classifier.py
 ```
 
-### 2. 监控缓存状态
+模型会保存到 `models/domain_classifier_v1.pkl`。
 
-```python
-from engines.smart_threat import SmartThreatDetector
-from engines.abuseipdb_detector import AbuseIPDBSmartDetector
+---
 
-# 查看微步缓存状态
-detector = SmartThreatDetector()
-print(detector.get_stats())
+## 🔐 AbuseIPDB 三级缓存
 
-# 查看 AbuseIPDB 缓存状态
-detector = AbuseIPDBSmartDetector()
-print(detector.get_stats())
-```
+| 缓存类型 | 有效期 | 说明 |
+|---------|--------|------|
+| **白名单** | 永久 | 知名云服务 IP（Google/AWS/Cloudflare），abuse_score = 0 |
+| **安全缓存** | 30 天 | 本次查询未发现异常，abuse_score < 10 |
+| **恶意缓存** | 90 天 | abuse_score >= 10，避免重复查询和告警 |
 
-### 3. 自定义白名单
+> 三级缓存完全隔离，安全条目和恶意条目不会互相覆盖。
 
-创建 `data/sources/custom_enterprise-domains.txt`：
+---
 
-```
-# 企业内部域名
-company.com
-intranet.company.com
+## 📝 手动更新数据源
 
-# 合作伙伴域名
-partner.com
-vendor.net
+```bash
+# 使用 CLI 分析时会自动检查和更新
+python -m cli analyze data/capture.pcap
+
+# 交互式模式下会询问是否更新
+# 非交互式模式（--no-threat-intel）跳过更新
 ```
 
 ---
 
-## ❓ 常见问题
+## ⚙️ 自定义数据源
 
-**Q: 为什么有些数据源显示"从未更新"？**
+编辑 `data/sources/example_sources.json` 作为模板：
 
-A: 这些数据源（如微步/AbuseIPDB）是按需查询的，不是定期拉取的。它们通过智能缓存机制工作。
+```json
+{
+  "name": "my_custom_source",
+  "category": "threat_domains",
+  "source_type": "remote_url",
+  "url_or_path": "https://example.com/threats.txt",
+  "update_interval_hours": 24,
+  "format": "text"
+}
+```
 
-**Q: 如何清理过期缓存？**
-
-A: 系统会自动清理超过 30 天的缓存条目。也可以手动删除 `data/sources/` 下的缓存文件。
-
-**Q: 状态文件过大怎么办？**
-
-A: 已优化。状态文件只保存元数据，不保存实际条目。正常情况应 <10KB。
+支持格式：`text`（每行一个）、`csv`、`json`。
 
 ---
 
-**更多文档**: 查看 [QUICK_START.md](QUICK_START.md) 和 [ENGINEERING_REPORT.md](ENGINEERING_REPORT.md)
+**返回 [快速开始](QUICK_START.md)**
