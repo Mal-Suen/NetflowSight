@@ -4,12 +4,17 @@ Command-line interface for NetflowSight
 
 import logging
 import sys
+import warnings
+from datetime import datetime
 from pathlib import Path
+
+# Suppress third-party warnings
+warnings.filterwarnings("ignore", message=".*numexpr.*")
+warnings.filterwarnings("ignore", message=".*feature names.*")
 
 import click
 from rich.console import Console
 from rich.panel import Panel
-from rich.progress import Progress, SpinnerColumn, TextColumn
 
 from analyzer import NetflowSightAnalyzer
 from core.config import settings
@@ -40,50 +45,83 @@ def cli():
 
 @cli.command()
 @click.argument("pcap_file", type=click.Path(exists=True))
-@click.option("--output", "-o", type=click.Path(), help="Output report file path")
-@click.option("--format", "-f", type=click.Choice(["json", "markdown", "text"]), default="text", help="Report format")
+@click.option("--output", "-o", type=click.Path(), help="Output report file path (default: auto)")
+@click.option("--format", "-f", type=click.Choice(["json", "markdown", "html", "text"]), default="html", help="Report format")
 @click.option("--no-ml", is_flag=True, help="Disable ML anomaly detection")
 @click.option("--no-threat-intel", is_flag=True, help="Disable threat intelligence API checks")
 @click.option("--verbose", "-v", is_flag=True, help="Enable verbose output")
 def analyze(pcap_file, output, format, no_ml, no_threat_intel, verbose):
     """Analyze a PCAP file and generate report."""
     setup_logging(
-        log_level="DEBUG" if verbose else settings.LOG_LEVEL,
+        log_level="WARNING" if not verbose else "DEBUG",
         log_file=settings.LOG_FILE,
     )
-    
+
     console.print(Panel.fit(
-        "🔍 NetflowSight - AI-Powered Network Traffic Analysis",
+        "🔍 NetflowSight - AI 驱动的网络流量分析",
         style="bold blue",
     ))
     console.print("")
-    
-    with Progress(
-        SpinnerColumn(),
-        TextColumn("[progress.description]{task.description}"),
-        console=console,
-    ) as progress:
-        task = progress.add_task("Analyzing PCAP file...", total=None)
-        
-        analyzer = NetflowSightAnalyzer(
-            pcap_file=str(pcap_file),
-            enable_ml=not no_ml,
-            enable_threat_intel=not no_threat_intel,
-        )
-        
-        result = analyzer.analyze()
-        progress.update(task, description="Analysis complete!")
-    
+
+    analyzer = NetflowSightAnalyzer(
+        pcap_file=str(pcap_file),
+        enable_ml=not no_ml,
+        enable_threat_intel=not no_threat_intel,
+    )
+
+    console.print("⏳ 正在分析 PCAP 文件...", style="yellow")
+    result = analyzer.analyze()
+    console.print("✅ 分析完成!", style="green")
     console.print("")
     
-    # Print summary
-    report = analyzer.generate_report(format="text")
-    console.print(report)
+    # Generate reports (HTML + JSON)
+    # Auto-generate output path if not specified
+    if not output:
+        pcap_name = Path(pcap_file).stem
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        report_dir = Path(pcap_file).parent / "reports"
+        report_dir.mkdir(parents=True, exist_ok=True)
+        output = str(report_dir / f"{timestamp}_{pcap_name}_report.html")
+        json_output = str(report_dir / f"{timestamp}_{pcap_name}_report.json")
+    elif output.endswith('.html'):
+        json_output = output.replace('.html', '.json')
+    elif output.endswith('.md'):
+        json_output = output.replace('.md', '.json')
+        output = output.replace('.md', '.html')
+    elif output.endswith('.json'):
+        json_output = output
+        output = output.replace('.json', '.html')
+    else:
+        json_output = output + '.json'
+        if not output.endswith('.html'):
+            output = output + '.html'
+
+    # Save main HTML report and get content
+    reports = analyzer.generate_report(format="html", output_path=output, generate_ai_report=False)
+    console.print(reports.get("human_report", ""), markup=False)
+
+    # Save JSON report
+    analyzer.generate_report(format="json", output_path=json_output, generate_ai_report=False)
+    console.print(f"\n💾 报告已保存:")
+    console.print(f"   🌐 HTML: {output}")
+    console.print(f"   📋 JSON: {json_output}", style="green")
+
+    # Show API usage info
+    if analyzer.abuseipdb_detector:
+        stats = analyzer.abuseipdb_detector.get_stats()
+        console.print(f"\n🌐 AbuseIPDB API 使用情况:")
+        console.print(f"   已查询: {stats['api_queries']} 次")
+        console.print(f"   缓存命中: {stats['cache_hits']} 次")
+        console.print(f"   白名单: {stats['whitelist_size']} 个 IP")
+        console.print(f"   安全缓存: {stats['safe_cache_size']} 个 IP")
     
-    # Save report if output specified
-    if output:
-        report_content = analyzer.generate_report(format=format, output_path=output)
-        console.print(f"💾 Report saved to: {output}", style="green")
+    if analyzer.smart_threat_detector:
+        smart_stats = analyzer.smart_threat_detector.get_stats()
+        console.print(f"\n🔍 微步 ThreatBook API 使用情况:")
+        console.print(f"   已查询: {smart_stats['api_queries']} 次")
+        console.print(f"   缓存命中: {smart_stats['cache_hits']} 次")
+        console.print(f"   白名单: {smart_stats['whitelist_size']} 个域名")
+        console.print(f"   安全缓存: {smart_stats['safe_cache_size']} 个域名")
 
 
 @cli.command()

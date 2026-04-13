@@ -493,7 +493,8 @@ class DataSourceManager:
         
         if category == DataSourceCategory.WHITELIST_DOMAINS:
             for item in combined:
-                if value_lower.endswith("." + item) or item in value_lower:
+                # Exact match or proper domain suffix match (not substring)
+                if value_lower == item or value_lower.endswith("." + item):
                     return True
         
         if category == DataSourceCategory.WHITELIST_IPS:
@@ -697,7 +698,8 @@ class DataSourceManager:
                         with gzip.GzipFile(fileobj=io.BytesIO(raw_data)) as f:
                             return f.read().decode("utf-8", errors="ignore"), etag
                     except Exception as e:
-                        logger.warning(f"Gzip decompression failed, falling back to raw: {e}")
+                        logger.error(f"Gzip decompression failed for {url}: {e}")
+                        raise
 
                 # 2. Auto-detect ZIP
                 if url.endswith(".zip"):
@@ -764,7 +766,7 @@ class DataSourceManager:
     def _update_with_time_window(self, source: DataSource) -> bool:
         """
         Update using time-window incremental download.
-        
+
         Only downloads items added since last update.
         Falls back to full update if incremental fails.
         """
@@ -772,30 +774,29 @@ class DataSourceManager:
         if not source.last_updated:
             logger.info(f"Source {source.name}: First run, doing full update")
             return self._update_with_etag(source)
-        
+
         try:
             # Calculate time window
             last_update = datetime.fromisoformat(source.last_updated)
             hours_since = (datetime.now() - last_update).total_seconds() / 3600
-            
-            # If within window, try incremental
-            if hours_since < source.incremental_window_hours:
+
+            # If within window and incremental URL template is configured, try incremental
+            if hours_since < source.incremental_window_hours and source.incremental_url_template:
                 # Build incremental URL
-                if source.incremental_url_template:
-                    url = source.incremental_url_template.format(
-                        last_updated=source.last_updated,
-                        hours_since=int(hours_since),
-                        since_timestamp=int(last_update.timestamp()),
-                    )
-                else:
-                    # Fallback: try common patterns
-                    url = f"{source.url_or_path.rstrip('/')}/since/{source.last_updated}"
-                
+                url = source.incremental_url_template.format(
+                    last_updated=source.last_updated,
+                    hours_since=int(hours_since),
+                    since_timestamp=int(last_update.timestamp()),
+                )
+
                 logger.info(f"Source {source.name}: Incremental update (last: {hours_since:.1f}h ago)")
                 return self._update_incremental_from_url(source, url)
             else:
-                # Window too large, do full update
-                logger.info(f"Source {source.name}: Window too large ({hours_since:.1f}h), full update")
+                # Window too large or no template, do full update
+                if hours_since >= source.incremental_window_hours:
+                    logger.info(f"Source {source.name}: Window too large ({hours_since:.1f}h), full update")
+                else:
+                    logger.info(f"Source {source.name}: No incremental URL template, full update")
                 return self._update_with_etag(source)
         except Exception as e:
             logger.warning(f"Source {source.name}: Incremental failed ({e}), falling back to full")

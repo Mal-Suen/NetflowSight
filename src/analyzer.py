@@ -17,8 +17,8 @@ from engines.dns import DNSThreatDetector
 from engines.http import HTTPThreatDetector
 from engines.covert import CovertChannelDetector
 from engines.behavior import BehavioralAnomalyDetector
-from engines.abuseipdb_detector import AbuseIPDBSmartDetector
 from engines.smart_threat import SmartThreatDetector
+from engines.abuseipdb_detector import AbuseIPDBSmartDetector
 from datasource.manager import DataSourceManager, DataSourceCategory
 from intel.cache import ThreatCache
 from ml.classifier import MLAnomalyClassifier
@@ -77,17 +77,16 @@ class NetflowSightAnalyzer:
             interactive=interactive,
         )
 
-        # Load threat domains from local data sources
-        threat_domains = self.datasource_mgr.get_items(DataSourceCategory.THREAT_DOMAINS)
-
         safe_domains = settings.load_safe_domains()
         self.dns_detector = DNSThreatDetector(safe_domains=safe_domains)
         self.http_detector = HTTPThreatDetector()
         self.covert_detector = CovertChannelDetector()
         self.behavior_detector = BehavioralAnomalyDetector()
 
-        # Store for use in analysis
-        self._threat_domains = threat_domains
+        # Smart threat detector for domain API verification (ThreatBook)
+        self.smart_threat_detector = SmartThreatDetector() if enable_threat_intel else None
+
+        # Store safe_domains for reference (threat_domains refreshed per-analyze)
         self._safe_domains = safe_domains
 
         self.ml_classifier = MLAnomalyClassifier() if enable_ml else None
@@ -125,11 +124,29 @@ class NetflowSightAnalyzer:
         logger.info("[3/6] Running threat detection engines...")
         all_threats = []
 
+        # Refresh threat domains from data source manager on each analysis
+        threat_domains = self.datasource_mgr.get_items(DataSourceCategory.THREAT_DOMAINS)
+
         # DNS detection with local threat domains
-        all_threats.extend(self.dns_detector.run(self._df, threat_domains=self._threat_domains))
+        all_threats.extend(self.dns_detector.run(self._df, threat_domains=threat_domains))
         all_threats.extend(self.http_detector.run(self._df))
         all_threats.extend(self.covert_detector.run(self._df))
         all_threats.extend(self.behavior_detector.run(self._df))
+
+        # Smart threat detection: send ML-flagged suspicious domains to ThreatBook API for verification
+        if self.enable_threat_intel and self.smart_threat_detector:
+            logger.info("[3.5/6] Running smart domain verification (ThreatBook API)...")
+            # Extract high-risk domains detected by ML classifier
+            ml_domains = []
+            for t in all_threats:
+                if t.threat_type.value == "UNKNOWN_DOMAIN":
+                    evidence = getattr(t, 'evidence', {})
+                    domain = evidence.get('domain', '')
+                    if domain:
+                        ml_domains.append(domain)
+            logger.info(f"  Found {len(ml_domains)} ML-flagged domains for ThreatBook verification")
+            smart_threats = self.smart_threat_detector.detect_threats(self._df, suspicious_domains=ml_domains)
+            all_threats.extend(smart_threats)
 
         # Step 4: Threat Intelligence (AbuseIPDB with smart caching)
         malicious_ips = []
@@ -217,16 +234,16 @@ class NetflowSightAnalyzer:
     
     def generate_report(
         self,
-        format: str = "markdown",
+        format: str = "html",
         output_path: Optional[str] = None,
-        generate_ai_report: bool = True,
+        generate_ai_report: bool = False,
         ai_output_path: Optional[str] = None,
     ) -> dict[str, str]:
         """
-        Generate analysis reports (both human-readable and AI-optimized).
+        Generate analysis reports.
 
         Args:
-            format: Report format ('json', 'markdown', 'text')
+            format: Report format ('json', 'markdown', 'text', 'html')
             output_path: Optional file path to save human-readable report
             generate_ai_report: Whether to generate AI-optimized report
             ai_output_path: Optional file path to save AI report
@@ -247,6 +264,15 @@ class NetflowSightAnalyzer:
             results["human_report"] = generator.generate_markdown(output_path)
         elif format == "text":
             results["human_report"] = generator.generate_text_summary()
+        elif format == "html":
+            from report.html_generator import HTMLReportGenerator
+            html_gen = HTMLReportGenerator(self._result)
+            api_stats = {}
+            if hasattr(self, 'abuseipdb_detector') and self.abuseipdb_detector:
+                api_stats['abuseipdb'] = self.abuseipdb_detector.get_stats()
+            if hasattr(self, 'smart_threat_detector') and self.smart_threat_detector:
+                api_stats['threatbook'] = self.smart_threat_detector.get_stats()
+            results["human_report"] = html_gen.generate(output_path, api_stats=api_stats)
         else:
             raise ValueError(f"Unsupported format: {format}")
 

@@ -3,10 +3,9 @@ DNS Threat Detection Engine
 
 DNS 威胁检测策略：
 1. 黑名单匹配：只检测已知的恶意域名（零误报）
-2. DNS 隧道检测：基于包数量的异常
-3. DGA 域名检测：基于信息熵识别算法生成域名
-
-注意：已移除"未知域名"检测，因为会产生大量误报
+2. ML 域名分类：基于 LightGBM 模型检测可疑域名
+3. DNS 隧道检测：基于包数量的异常
+4. DGA 域名检测：基于信息熵识别算法生成域名
 """
 from __future__ import annotations
 import logging
@@ -14,13 +13,14 @@ import math
 from typing import Any, Optional
 import pandas as pd
 from plugins.interfaces import DetectionEngine, DetectionResult, Severity, ThreatType
+from engines.domain_classifier import DomainClassifier
 
 logger = logging.getLogger(__name__)
 
 class DNSThreatDetector:
     name = "dns_threat_detector"
     version = "3.0.0"
-    description = "DNS 威胁检测引擎（黑名单 + DGA + 隧道检测）"
+    description = "DNS 威胁检测引擎（黑名单 + ML 分类器 + DGA + 隧道检测）"
     enabled = True
 
     def __init__(self, safe_domains: Optional[set[str]] = None, config: Optional[dict] = None):
@@ -42,6 +42,8 @@ class DNSThreatDetector:
         }
         self.safe_domains = safe_domains if safe_domains is not None else default_safe
         self.config = config or self._default_config()
+        # Initialize ML Domain Classifier
+        self.domain_classifier = DomainClassifier()
 
     @staticmethod
     def _default_config() -> dict[str, Any]:
@@ -71,10 +73,13 @@ class DNSThreatDetector:
         # 1. 黑名单匹配（零误报策略）
         results.extend(self._detect_threat_domains(df, threat_domains))
 
-        # 2. DNS 隧道检测
+        # 2. ML 域名分类检测（基于 LightGBM 模型）
+        results.extend(self._detect_suspicious_domains_ml(df))
+
+        # 3. DNS 隧道检测
         results.extend(self._detect_dns_tunnel(df))
 
-        # 3. DGA 域名检测
+        # 4. DGA 域名检测
         results.extend(self._detect_dga_domains(df))
 
         return results
@@ -132,6 +137,53 @@ class DNSThreatDetector:
                     confidence=0.9,
                     ioc=[domain, matched_threat_domain],
                     recommended_action="建议：立即隔离访问该域名的主机，进行恶意软件扫描和取证分析。"
+                ))
+
+        return results
+
+    def _detect_suspicious_domains_ml(self, df: pd.DataFrame) -> list[DetectionResult]:
+        """
+        使用 ML 域名分类器检测可疑域名。
+        替代旧的正则规则检测，提供基于概率的评分。
+        """
+        results = []
+        if "requested_server_name" not in df.columns:
+            return results
+
+        dns_flows = df[df["application_name"] == "DNS"]
+        if dns_flows.empty:
+            return results
+
+        # 获取所有唯一域名
+        unique_domains = dns_flows["requested_server_name"].dropna().unique()
+        if not unique_domains.size:
+            return results
+
+        # 批量预测
+        predictions = self.domain_classifier.predict_batch(list(unique_domains), threshold=0.85)
+
+        for domain, (is_suspicious, prob) in zip(unique_domains, predictions):
+            if is_suspicious:
+                count = int(len(dns_flows[dns_flows["requested_server_name"] == domain]))
+                src_ips = dns_flows[dns_flows["requested_server_name"] == domain]["src_ip"].dropna().unique()
+
+                # 根据概率设置严重程度
+                severity = Severity.HIGH if prob > 0.95 else Severity.MEDIUM
+
+                results.append(DetectionResult(
+                    engine_name=self.name, engine_version=self.version,
+                    threat_type=ThreatType.UNKNOWN_DOMAIN,
+                    severity=severity,
+                    description=f"ML 域名分类器检测到可疑域名: {domain} (恶意概率: {prob:.2%}, {count} 次查询)",
+                    evidence={
+                        "domain": domain,
+                        "ml_score": prob,
+                        "query_count": count,
+                        "source_ips": list(src_ips[:10]),
+                    },
+                    confidence=prob,
+                    ioc=[domain],
+                    recommended_action="建议：该域名被 ML 模型判定为高度可疑，建议进一步分析其解析记录和相关流量。"
                 ))
 
         return results

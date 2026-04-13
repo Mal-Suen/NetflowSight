@@ -2,6 +2,7 @@
 MCP Server for AI-powered PCAP analysis
 """
 
+import ipaddress
 import logging
 from typing import Optional
 
@@ -44,10 +45,12 @@ def create_mcp_server(analyzer: FlowStreamAnalyzer) -> Optional["FastMCP"]:
     def analyze_port_flows(port: int) -> dict:
         """
         Analyze traffic for a specific port.
-        
+
         Args:
-            port: Port number to analyze
+            port: Port number to analyze (0-65535)
         """
+        if not isinstance(port, int) or not (0 <= port <= 65535):
+            return {"error": f"Invalid port: {port}. Must be 0-65535."}
         flows = analyzer.filter_flows(dst_port=port)
         if flows.empty:
             return {"error": f"No flows found for port {port}"}
@@ -70,10 +73,14 @@ def create_mcp_server(analyzer: FlowStreamAnalyzer) -> Optional["FastMCP"]:
     def analyze_ip(ip: str) -> dict:
         """
         Analyze traffic for a specific IP address.
-        
+
         Args:
             ip: IP address to analyze
         """
+        try:
+            ipaddress.ip_address(ip)
+        except ValueError:
+            return {"error": f"Invalid IP address: {ip}"}
         src_flows = analyzer.filter_flows(src_ip=ip)
         dst_flows = analyzer.filter_flows(dst_ip=ip)
         

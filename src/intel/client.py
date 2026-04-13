@@ -105,13 +105,6 @@ class ThreatIntelligenceClient:
             self.session.close()
             logger.debug("Threat intelligence client session closed")
 
-    def __del__(self):
-        """Destructor to ensure session is closed."""
-        try:
-            self.close()
-        except Exception:
-            pass
-
     def __enter__(self):
         """Context manager entry."""
         return self

@@ -42,3 +42,9 @@ test_pcap.py
 test_threatbook.py
 check_sources.py
 update_sources.py
+
+# Qwen Code
+.qwen/
+
+# ML Models (large binary files, retrain via scripts/train_domain_classifier.py)
+models/*.pkl

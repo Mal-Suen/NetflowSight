@@ -1,0 +1,15 @@
+domain_length
+sld_length
+tld_length
+subdomain_count
+tld_is_common
+sld_entropy
+digit_ratio
+alpha_ratio
+hyphen_count
+has_digit
+max_consecutive
+special_char_ratio
+transition_ratio
+vowel_ratio
+is_ip

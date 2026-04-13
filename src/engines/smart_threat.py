@@ -3,7 +3,7 @@
 只查询可疑域名到微步 API，避免滥用免费额度
 
 策略：
-1. 先使用本地规则筛选可疑域名（放宽规则，避免漏报）
+1. 先使用 ML 域名分类器筛选可疑域名（替代旧的正则规则）
 2. 查询微步 API
 3. 根据返回结果分类处理：
    - judgments 包含 "Whitelist" → ✅ 加入白名单（永久保存）
@@ -17,7 +17,6 @@
 """
 
 import logging
-import re
 import json
 from pathlib import Path
 from typing import Optional
@@ -27,20 +26,11 @@ import pandas as pd
 
 from intel.threatbook import ThreatBookClient
 from plugins.interfaces import DetectionResult, Severity, ThreatType
+from engines.domain_classifier import DomainClassifier
 
 logger = logging.getLogger(__name__)
 
-# 预编译正则表达式 - 放宽规则，捕获更多可疑域名
-_SUSPICIOUS_DOMAIN_PATTERN = re.compile(
-    r'(?:^|\.)(?:'
-    r'[a-z0-9]{15,}|'  # 超长域名（15 字符以上，可能为 DGA）
-    r'[a-z0-9]*[0-9][a-z0-9]*[0-9][a-z0-9]*\.'  # 包含多个数字
-    r'(?:tk|ml|ga|cf|gq|xyz|top|buzz|club|site|online|space|work|loan|win|stream|download|account|verify|secure|login|click|update)'  # 可疑 TLD
-    r')',
-    re.IGNORECASE
-)
-
-# 常见安全域名前缀（用于排除明显误报，但规则放宽）
+# 已知安全域名关键词（用于快速过滤，避免对正常服务产生 API 查询）
 _SAFE_DOMAIN_KEYWORDS = {
     "google.com", "microsoft.com", "apple.com", "amazon.com",
     "github.com", "cloudflare.com",
@@ -73,10 +63,16 @@ class SmartThreatDetector:
 
     def __init__(self,
                  whitelist_file: Optional[str] = None,
-                 safe_cache_file: Optional[str] = None):
+                 safe_cache_file: Optional[str] = None,
+                 domain_classifier_threshold: float = 0.85):
         self.client = ThreatBookClient()
         self._query_count = 0
         self._cache_hits = 0
+
+        # ML-based domain classifier (replaces regex rules)
+        # Uses a high threshold (0.85) to minimize false positives
+        self._domain_classifier = DomainClassifier()
+        self._classifier_threshold = domain_classifier_threshold
 
         # 两份不同的名单
         self._whitelist: dict[str, dict] = {}  # 白名单（永久）
@@ -156,21 +152,22 @@ class SmartThreatDetector:
         except Exception as e:
             logger.warning(f"保存安全缓存失败: {e}")
 
-    def detect_threats(self, df: pd.DataFrame) -> list[DetectionResult]:
+    def detect_threats(self, df: pd.DataFrame, suspicious_domains: Optional[list[str]] = None) -> list[DetectionResult]:
         """
         检测网络流中的威胁域名
 
         Args:
             df: 网络流 DataFrame
+            suspicious_domains: 可选，外部传入的可疑域名列表（如 ML 检测结果）
 
         Returns:
             威胁检测结果列表
         """
-        if "requested_server_name" not in df.columns:
+        if "requested_server_name" not in df.columns and not suspicious_domains:
             return []
 
-        dns_flows = df[df["application_name"] == "DNS"]
-        if dns_flows.empty:
+        dns_flows = df[df["application_name"] == "DNS"] if "application_name" in df.columns else df
+        if dns_flows.empty and not suspicious_domains:
             return []
 
         results = []
@@ -178,7 +175,14 @@ class SmartThreatDetector:
         whitelist_added = 0
         safe_cached = 0
 
-        for domain in dns_flows["requested_server_name"].dropna().unique():
+        # 确定要检查的域名集合
+        domains_to_check = set()
+        if suspicious_domains:
+            domains_to_check.update(d.lower().rstrip(".") for d in suspicious_domains)
+        if not dns_flows.empty:
+            domains_to_check.update(dns_flows["requested_server_name"].dropna().str.lower().str.rstrip(".").unique())
+
+        for domain in domains_to_check:
             domain_lower = domain.lower().rstrip(".")
 
             # 跳过已检查的域名
@@ -307,56 +311,43 @@ class SmartThreatDetector:
 
     def _is_suspicious_domain(self, domain: str) -> bool:
         """
-        本地可疑域名检查（放宽规则）
+        判断域名是否可疑，使用混合策略：
+        1. 已知安全域名 → 直接放行
+        2. 白名单/安全缓存 → 直接放行
+        3. 规则检查（TLD、长度、连字符等）→ 快速判断
+        4. ML 分类器辅助确认（高阈值，低误报）
 
-        规则：
-        1. 不在已知安全域名列表中
-        2. 不在白名单中
-        3. 不在安全缓存中（未过期）
-        4. 域名长度超过 15 个字符
-        5. 包含可疑 TLD
-        6. 包含数字和字母混合（可能为 DGA）
-        7. 包含过多连字符
+        返回 True 表示域名可疑，应进一步查询微步 API。
         """
-        # 排除已知安全域名（精确匹配或子域名匹配）
+        # 第一层：已知安全域名快速过滤
         for safe_domain in _SAFE_DOMAIN_KEYWORDS:
             if domain == safe_domain or domain.endswith("." + safe_domain):
                 return False
 
-        # 检查白名单（永久有效）
+        # 第二层：白名单和安全缓存
         if domain in self._whitelist:
             return False
 
-        # 检查安全缓存（30 天过期）
         if domain in self._safe_cache:
             cached = self._safe_cache[domain]
             cached_time = datetime.fromisoformat(cached.get("cached_at", ""))
             if (datetime.now() - cached_time).days < self.SAFE_DOMAIN_TTL_DAYS:
-                return False  # 缓存未过期，已确认为安全
+                return False
 
-        # 检查可疑模式
-        if _SUSPICIOUS_DOMAIN_PATTERN.search(domain):
+        # 第三层：规则检查（委托给 domain_classifier）
+        rule_suspicious = self._domain_classifier._rule_based_check(domain)[0]
+
+        # 第四层：ML 分类器辅助确认（仅当规则检查为可疑时）
+        if rule_suspicious and self._domain_classifier.is_available:
+            is_ml_suspicious, ml_prob = self._domain_classifier.is_suspicious(
+                domain, threshold=self._classifier_threshold
+            )
+            logger.debug(f"Domain '{domain}': rule=suspicious, ML score={ml_prob:.3f}, ML suspicious={is_ml_suspicious}")
+            # ML 确认可疑 → 查询 API
+            # ML 确认安全但规则认为可疑 → 仍然查询 API（保守策略，避免漏报）
             return True
 
-        # 域名过长（超过 25 个字符）
-        if len(domain) > 25:
-            return True
-
-        # 包含过多连字符（超过 2 个）
-        if domain.count('-') > 2:
-            return True
-
-        # 非常见 TLD（非 .com/.cn/.net/.org/.com.cn 等）
-        common_tlds = {'.com', '.cn', '.net', '.org', '.com.cn', '.net.cn', '.org.cn', '.edu.cn', '.gov.cn'}
-        for tld in common_tlds:
-            if domain.endswith(tld):
-                return False  # 常见 TLD，跳过
-
-        # 其他 TLD 标记为可疑
-        if '.' in domain:
-            return True
-
-        return False
+        return rule_suspicious
 
     def _check_cache(self, domain: str) -> tuple[Optional[dict], bool]:
         """

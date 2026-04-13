@@ -9,6 +9,7 @@ AbuseIPDB 智能威胁检测模块
 
 import logging
 import json
+import ipaddress
 from pathlib import Path
 from typing import Optional
 from datetime import datetime, timedelta
@@ -16,7 +17,8 @@ from datetime import datetime, timedelta
 import pandas as pd
 
 from intel.client import ThreatIntelligenceClient
-from plugins.interfaces import DetectionResult, Severity, ThreatType
+from core.models import Severity, ThreatType
+from plugins.interfaces import DetectionResult
 
 logger = logging.getLogger(__name__)
 
@@ -61,25 +63,29 @@ class AbuseIPDBSmartDetector:
 
     def __init__(self,
                  whitelist_file: Optional[str] = None,
-                 safe_cache_file: Optional[str] = None):
+                 safe_cache_file: Optional[str] = None,
+                 malicious_cache_file: Optional[str] = None):
         self.client = ThreatIntelligenceClient()
         self._query_count = 0
         self._cache_hits = 0
 
-        # 两份不同的名单
+        # 三份不同的名单
         self._whitelist: dict[str, dict] = {}  # 白名单（永久）
         self._safe_cache: dict[str, dict] = {}  # 安全缓存（30 天过期）
+        self._malicious_cache: dict[str, dict] = {}  # 恶意缓存（90 天过期，用于避免重复告警）
 
-        # 获取项目根目录（当前文件在 src/engines/，向上3级到项目根）
+        # 获取项目根目录
         project_root = Path(__file__).resolve().parent.parent.parent
 
         # 设置默认文件路径
         self._whitelist_file = Path(whitelist_file) if whitelist_file else project_root / "data" / "sources" / "abuseipdb_whitelist.json"
         self._safe_cache_file = Path(safe_cache_file) if safe_cache_file else project_root / "data" / "sources" / "abuseipdb_safe_cache.json"
+        self._malicious_cache_file = Path(malicious_cache_file) if malicious_cache_file else project_root / "data" / "sources" / "abuseipdb_malicious_cache.json"
 
         # 加载本地数据
         self._load_whitelist()
         self._load_safe_cache()
+        self._load_malicious_cache()
 
     def _load_whitelist(self):
         """加载白名单文件（永久有效）"""
@@ -144,6 +150,45 @@ class AbuseIPDBSmartDetector:
         except Exception as e:
             logger.warning(f"保存 AbuseIPDB 安全缓存失败: {e}")
 
+    def _load_malicious_cache(self):
+        """加载恶意 IP 缓存（90 天过期）"""
+        if self._malicious_cache_file.exists():
+            try:
+                with open(self._malicious_cache_file, "r", encoding="utf-8") as f:
+                    cache_data = json.load(f)
+
+                # 清理过期缓存（超过 90 天）
+                now = datetime.now()
+                valid_cache = {}
+                expired_count = 0
+                for ip, info in cache_data.items():
+                    cached_time = datetime.fromisoformat(info.get("cached_at", ""))
+                    if (now - cached_time).days < 90:
+                        valid_cache[ip] = info
+                    else:
+                        expired_count += 1
+
+                self._malicious_cache = valid_cache
+                if expired_count > 0:
+                    logger.info(f"清理了 {expired_count} 个过期的 AbuseIPDB 恶意 IP 缓存")
+                logger.info(f"加载 AbuseIPDB 恶意 IP 缓存: {len(self._malicious_cache)} 个 IP")
+            except Exception as e:
+                logger.warning(f"加载 AbuseIPDB 恶意缓存失败: {e}")
+                self._malicious_cache = {}
+
+    def _save_malicious_cache(self):
+        """保存恶意 IP 缓存到本地文件"""
+        if not self._malicious_cache:
+            return
+
+        try:
+            self._malicious_cache_file.parent.mkdir(parents=True, exist_ok=True)
+            with open(self._malicious_cache_file, "w", encoding="utf-8") as f:
+                json.dump(self._malicious_cache, f, indent=2, ensure_ascii=False)
+            logger.info(f"AbuseIPDB 恶意 IP 缓存已保存到 {self._malicious_cache_file} ({len(self._malicious_cache)} 个 IP)")
+        except Exception as e:
+            logger.warning(f"保存 AbuseIPDB 恶意缓存失败: {e}")
+
     def detect_threats(self, df: pd.DataFrame) -> tuple[list[DetectionResult], list[dict]]:
         """
         检测网络流中的威胁 IP
@@ -157,9 +202,15 @@ class AbuseIPDBSmartDetector:
         if "dst_ip" not in df.columns:
             return [], []
 
-        # 获取外部 IP（排除私有 IP）
-        private_pattern = r"^(10\.|192\.168\.|172\.(1[6-9]|2[0-9]|3[01])\.|127\.)"
-        external_ips = df[~df["dst_ip"].str.match(private_pattern, na=False)]["dst_ip"].unique()
+        # 获取外部 IP（使用 ipaddress 模块排除私有/保留 IP，支持 IPv6）
+        external_ips = []
+        for ip_str in df["dst_ip"].dropna().unique():
+            try:
+                ip_obj = ipaddress.ip_address(ip_str)
+                if not ip_obj.is_private and not ip_obj.is_loopback and not ip_obj.is_link_local:
+                    external_ips.append(ip_str)
+            except ValueError:
+                continue
 
         results = []
         malicious_ips = []
@@ -172,7 +223,7 @@ class AbuseIPDBSmartDetector:
                 continue
             checked_ips.add(ip)
 
-            # 第一步：检查白名单和安全缓存
+            # 第一步：检查白名单、安全缓存和恶意缓存
             cached_result, from_cache = self._check_cache(ip)
             if from_cache:
                 if cached_result.get("is_whitelist"):
@@ -224,7 +275,7 @@ class AbuseIPDBSmartDetector:
                 logger.debug(f"AbuseIPDB 安全 IP: {ip} (abuse_score: {abuse_score})")
 
             elif is_malicious:
-                # 🔴 生成告警
+                # 🔴 生成告警，存入恶意缓存（不与安全缓存混用）
                 result = {
                     **reputation,
                     "is_whitelist": False,
@@ -232,8 +283,7 @@ class AbuseIPDBSmartDetector:
                     "is_malicious": True,
                     "cached_at": datetime.now().isoformat(),
                 }
-                # 也缓存恶意 IP（避免重复查询）
-                self._safe_cache[ip] = result
+                self._malicious_cache[ip] = result
 
                 malicious_ips.append(result)
                 results.append(DetectionResult(
@@ -256,9 +306,10 @@ class AbuseIPDBSmartDetector:
                     recommended_action="建议：该 IP 被 AbuseIPDB 标记为恶意 IP，建议封禁或进一步调查。"
                 ))
 
-        # 保存两份名单
+        # 保存三份名单
         self._save_whitelist()
         self._save_safe_cache()
+        self._save_malicious_cache()
 
         # 输出统计
         cache_tag = f"(缓存命中 {self._cache_hits} 次)" if self._cache_hits > 0 else ""
@@ -272,7 +323,7 @@ class AbuseIPDBSmartDetector:
 
     def _check_cache(self, ip: str) -> tuple[Optional[dict], bool]:
         """
-        检查白名单和安全缓存
+        检查白名单、安全缓存和恶意缓存
 
         Returns:
             (威胁情报字典，是否来自缓存)
@@ -281,6 +332,14 @@ class AbuseIPDBSmartDetector:
         if ip in self._whitelist:
             self._cache_hits += 1
             return self._whitelist[ip], True
+
+        # 检查恶意缓存（90 天过期）
+        if ip in self._malicious_cache:
+            cached = self._malicious_cache[ip]
+            cached_time = datetime.fromisoformat(cached.get("cached_at", ""))
+            if (datetime.now() - cached_time).days < 90:
+                self._cache_hits += 1
+                return cached, True
 
         # 检查安全缓存（30 天过期）
         if ip in self._safe_cache:
@@ -351,3 +410,4 @@ class AbuseIPDBSmartDetector:
         self.client.close()
         self._save_whitelist()
         self._save_safe_cache()
+        self._save_malicious_cache()

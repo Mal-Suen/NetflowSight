@@ -16,22 +16,54 @@ class Severity(str, Enum):
 
 
 class ThreatType(str, Enum):
-    """Types of detected threats."""
-    UNKNOWN_DOMAIN = "UNKNOWN_DOMAIN"
-    DNS_TUNNEL = "DNS_TUNNEL"
+    """Types of detected threats - aligned with MITRE ATT&CK."""
+    # Initial Access
+    WATERING_HOLE = "WATERING_HOLE"
+    PHISHING = "PHISHING"
     PHISHING_DOMAIN = "PHISHING_DOMAIN"
-    HTTP_POST_ANOMALY = "HTTP_POST_ANOMALY"
-    UNUSUAL_PORT = "UNUSUAL_PORT"
-    SUSPICIOUS_USER_AGENT = "SUSPICIOUS_USER_AGENT"
+    EXPLOITATION = "EXPLOITATION"
+
+    # Execution
+    MALICIOUS_SCRIPT = "MALICIOUS_SCRIPT"
+    POWERSHELL_ABUSE = "POWERSHELL_ABUSE"
+
+    # Persistence
+    STARTUP_ITEM = "STARTUP_ITEM"
+    SCHEDULED_TASK = "SCHEDULED_TASK"
+    REGISTRY_MODIFICATION = "REGISTRY_MODIFICATION"
+
+    # Command and Control
+    C2_BEACON = "C2_BEACON"
+    C2_DATA_EXFIL = "C2_DATA_EXFIL"
+    DNS_TUNNEL = "DNS_TUNNEL"
     ICMP_TUNNEL = "ICMP_TUNNEL"
-    DNS_EXFILTRATION = "DNS_EXFILTRATION"
+    UNCOMMON_PORT = "UNCOMMON_PORT"
     UNKNOWN_TLS = "UNKNOWN_TLS"
-    ONE_WAY_EXFILTRATION = "ONE_WAY_EXFILTRATION"
+    UNUSUAL_PORT = "UNUSUAL_PORT"
+
+    # Discovery
+    PORT_SCAN = "PORT_SCAN"
+    NETWORK_SCAN = "NETWORK_SCAN"
+
+    # Exfiltration
+    DATA_EXFILTRATION = "DATA_EXFILTRATION"
+    DNS_EXFILTRATION = "DNS_EXFILTRATION"
+    HTTP_EXFILTRATION = "HTTP_EXFILTRATION"
+
+    # Reputation
+    MALICIOUS_IP = "MALICIOUS_IP"
+    MALICIOUS_DOMAIN = "MALICIOUS_DOMAIN"
+    DGA_DOMAIN = "DGA_DOMAIN"
+    UNKNOWN_DOMAIN = "UNKNOWN_DOMAIN"
+
+    # Anomaly
+    SUSPICIOUS_USER_AGENT = "SUSPICIOUS_USER_AGENT"
+    HTTP_POST_ANOMALY = "HTTP_POST_ANOMALY"
     LARGE_DATA_TRANSFER = "LARGE_DATA_TRANSFER"
     SUSPICIOUS_COMMUNICATION = "SUSPICIOUS_COMMUNICATION"
-    PORT_SCAN = "PORT_SCAN"
-    MALICIOUS_IP = "MALICIOUS_IP"
+    BEHAVIORAL_ANOMALY = "BEHAVIORAL_ANOMALY"
     ML_ANOMALY = "ML_ANOMALY"
+    ONE_WAY_EXFILTRATION = "ONE_WAY_EXFILTRATION"
 
 
 @dataclass
@@ -146,7 +178,7 @@ class AnalysisResult:
                         "severity": t.severity.value,
                         "description": t.description,
                         "evidence": t.evidence,
-                        "recommendation": t.recommendation,
+                        "recommendation": getattr(t, 'recommended_action', None) or getattr(t, 'recommendation', ''),
                     }
                     for t in self.threats[:100]  # Limit for serialization
                 ],

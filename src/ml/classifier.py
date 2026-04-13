@@ -48,16 +48,19 @@ class MLAnomalyClassifier:
     ):
         """
         Initialize ML anomaly classifier.
-        
+
         Args:
             contamination: Expected proportion of anomalies
             n_estimators: Number of trees in the forest
-            model_path: Path to pre-trained model (optional)
+            model_path: Path to pre-trained model (optional).
+                If a pre-trained model is not available, the classifier will
+                operate in 'unsupervised scoring mode' using a default model
+                that provides relative anomaly scores without per-dataset training.
         """
         self.contamination = contamination
         self.n_estimators = n_estimators
         self.model_path = model_path
-        
+
         self.model = IsolationForest(
             n_estimators=n_estimators,
             contamination=contamination,
@@ -66,6 +69,13 @@ class MLAnomalyClassifier:
         )
         self.scaler = StandardScaler()
         self._is_fitted = False
+
+        # Load pre-trained model if available
+        if model_path:
+            try:
+                self.load_model(model_path)
+            except (FileNotFoundError, RuntimeError):
+                logger.info(f"No pre-trained model at {model_path}, will use default scoring")
     
     def _extract_features(self, df: pd.DataFrame) -> pd.DataFrame:
         """
@@ -127,41 +137,96 @@ class MLAnomalyClassifier:
     def predict(self, df: pd.DataFrame) -> pd.DataFrame:
         """
         Predict anomalies and add scores to DataFrame.
-        
+
+        If a pre-trained model is available, it will be used for prediction.
+        If not, the method computes relative anomaly scores based on flow
+        characteristics (bytes, packets, duration) without training on the
+        input data, avoiding data leakage.
+
         Args:
             df: DataFrame with flow records
-            
+
         Returns:
             DataFrame with added 'anomaly_score' and 'is_anomaly' columns
         """
-        if not self._is_fitted:
-            logger.info("Model not trained, training on input data...")
-            self.fit(df)
-        
         features = self._extract_features(df)
         if features.empty:
+            df = df.copy()
             df["anomaly_score"] = 0.0
             df["is_anomaly"] = False
             return df
-        
-        # Scale features
-        X_scaled = self.scaler.transform(features)
-        
-        # Get predictions (-1 for anomaly, 1 for normal)
-        predictions = self.model.predict(X_scaled)
-        
-        # Get anomaly scores (more negative = more anomalous)
-        scores = self.model.decision_function(X_scaled)
-        
-        # Add to DataFrame
-        df = df.copy()
-        df["anomaly_score"] = -scores  # Invert so higher = more anomalous
-        df["is_anomaly"] = predictions == -1
-        
-        anomaly_count = df["is_anomaly"].sum()
-        logger.info(f"ML detection: {anomaly_count} anomalies found ({anomaly_count/len(df)*100:.2f}%)")
-        
+
+        if self._is_fitted:
+            # Use pre-trained model
+            X_scaled = self.scaler.transform(features)
+            predictions = self.model.predict(X_scaled)
+            scores = self.model.decision_function(X_scaled)
+
+            df = df.copy()
+            df["anomaly_score"] = -scores  # Invert so higher = more anomalous
+            df["is_anomaly"] = predictions == -1
+            anomaly_count = int(df["is_anomaly"].sum())
+            logger.info(f"ML detection: {anomaly_count} anomalies found ({anomaly_count/len(df)*100:.2f}%)")
+        else:
+            # No pre-trained model: compute relative anomaly scores without training
+            # This avoids data leakage (training and predicting on same data)
+            df = df.copy()
+            df["anomaly_score"] = self._compute_relative_scores(features)
+            # Mark top `contamination` fraction as anomalies
+            threshold = df["anomaly_score"].quantile(1 - self.contamination)
+            df["is_anomaly"] = df["anomaly_score"] >= threshold
+            anomaly_count = int(df["is_anomaly"].sum())
+            logger.info(
+                f"ML detection (unsupervised scoring): {anomaly_count} anomalies found "
+                f"({anomaly_count/len(df)*100:.2f}%) — note: no pre-trained model loaded"
+            )
+
         return df
+
+    def _compute_relative_scores(self, features: pd.DataFrame) -> pd.Series:
+        """
+        Compute relative anomaly scores without training on input data.
+
+        Uses statistical heuristics: flows that are extreme in bytes/packets
+        relative to the median get higher anomaly scores. This provides
+        meaningful scores without the data leakage of training on the same data.
+
+        Args:
+            features: DataFrame with ML features
+
+        Returns:
+            Series of anomaly scores (higher = more anomalous)
+        """
+        # Compute z-score-like metric using median and MAD (median absolute deviation)
+        bytes_col = "bidirectional_bytes"
+        packets_col = "bidirectional_packets"
+        duration_col = "bidirectional_duration_ms"
+
+        scores = pd.Series(0.0, index=features.index)
+
+        for col in [bytes_col, packets_col, duration_col]:
+            if col not in features.columns:
+                continue
+            vals = features[col].astype(float)
+            median = vals.median()
+            mad = (vals - median).abs().median()
+            if mad > 0:
+                # Modified z-score
+                z = ((vals - median) / mad).abs()
+                scores += z
+            else:
+                # Fallback: use range
+                max_val = vals.max()
+                min_val = vals.min()
+                if max_val > min_val:
+                    scores += (vals - min_val) / (max_val - min_val)
+
+        # Normalize to 0-1 range
+        max_score = scores.max()
+        if max_score > 0:
+            scores = scores / max_score
+
+        return scores
     
     def get_anomaly_summary(self, df: pd.DataFrame) -> dict:
         """
