@@ -173,21 +173,20 @@ class DataSourceManager:
         if auto_load_state:
             self.load_state()
 
-        # First run: auto-update without asking
-        if is_first_run:
+        # Ask for update on every run (including first run)
+        if self._interactive:
+            self._ask_and_update()
+        elif is_first_run:
+            # Non-interactive first run: auto-update
             logger.info("First run detected: Automatically updating data sources...")
             try:
                 self.update_all()
                 logger.info("Initial data source update complete")
             except Exception as e:
                 logger.warning(f"Initial update failed: {e}")
-        elif auto_update_on_start:
-            # Subsequent runs: ask if interactive
-            if self._interactive:
-                self._ask_and_update()
-            else:
-                # Non-interactive: just use cached data
-                logger.debug("Using cached data sources (auto_update_on_start=False)")
+        else:
+            # Non-interactive subsequent runs: use cached data
+            logger.debug("Using cached data sources (non-interactive mode)")
     
     def _register_default_sources(self) -> None:
         """Register built-in default data sources."""
@@ -487,69 +486,126 @@ class DataSourceManager:
     def _ask_and_update(self) -> None:
         """
         Interactively ask user if they want to update data sources.
+        Shows which sources need update based on update_interval_hours.
         """
         try:
-            # Check when was the last update
-            last_update = None
+            now = datetime.now()
+            remote_sources = [
+                s for s in self._sources.values()
+                if s.enabled and s.source_type == DataSourceType.REMOTE_URL
+            ]
+
+            # Check which sources need update
+            sources_needing_update = []
+            for s in remote_sources:
+                if not s.last_updated:
+                    sources_needing_update.append((s, "从未更新"))
+                else:
+                    try:
+                        last_update = datetime.fromisoformat(s.last_updated)
+                        hours_since = (now - last_update).total_seconds() / 3600
+                        if hours_since >= s.update_interval_hours:
+                            sources_needing_update.append((s, f"{hours_since:.1f}h 前"))
+                    except ValueError:
+                        sources_needing_update.append((s, "时间解析失败"))
+
+            print("\n" + "=" * 60)
+            print("📦 威胁情报数据源更新检查")
+            print("=" * 60)
+
+            # Show last overall update
             if self._update_history:
                 last_update = self._update_history[-1].get("timestamp")
-            
-            print("\n" + "=" * 50)
-            print("📦 Data Source Update Check")
-            print("=" * 50)
-            
-            if last_update:
-                print(f"Last update: {last_update}")
+                print(f"上次更新: {last_update}")
             else:
-                print("Last update: Never")
-            
-            print(f"Enabled sources: {sum(1 for s in self._sources.values() if s.enabled and s.source_type.value != 'generated')}")
-            print("")
-            print("Check for updates now? [Y/n]: ", end="", flush=True)
-            
+                print("上次更新: 从未")
+
+            print(f"远程数据源: {len(remote_sources)} 个")
+            print(f"需要更新: {len(sources_needing_update)} 个")
+            print()
+
+            # Show sources needing update
+            if sources_needing_update:
+                print("需要更新的数据源:")
+                for s, time_info in sources_needing_update:
+                    interval = f"{s.update_interval_hours}h" if s.update_interval_hours > 0 else "手动"
+                    print(f"  • {s.name}: {time_info} (间隔: {interval})")
+                print()
+                print("是否更新? [Y/n]: ", end="", flush=True)
+            else:
+                print("✅ 所有数据源都在更新间隔内")
+                print("是否强制更新所有数据源? [y/N]: ", end="", flush=True)
+
             choice = input().strip().lower()
-            
-            if choice in ("", "y", "yes"):
-                print("\n🔄 Updating data sources...")
-                results = self.update_all()
+
+            if choice in ("", "y", "yes") and sources_needing_update:
+                print("\n🔄 正在更新数据源...")
+                results = self.update_all(force=False)
                 success = sum(1 for v in results.values() if v)
-                total = len(results)
-                print(f"✅ Update complete: {success}/{total} sources updated")
+                total = len([r for r in remote_sources])
+                print(f"✅ 更新完成: {success}/{total} 个数据源成功")
+            elif choice in ("y", "yes"):
+                print("\n🔄 正在强制更新所有数据源...")
+                results = self.update_all(force=True)
+                success = sum(1 for v in results.values() if v)
+                total = len([r for r in remote_sources])
+                print(f"✅ 更新完成: {success}/{total} 个数据源成功")
             else:
-                print("⏭️ Skipping update, using cached data")
-            
-            print("=" * 50 + "\n")
-            
+                print("⏭️ 跳过更新，使用缓存数据")
+
+            print("=" * 60 + "\n")
+
         except (EOFError, KeyboardInterrupt):
             # Non-interactive fallback
             logger.info("Non-interactive mode: skipping update check")
         except Exception as e:
             logger.warning(f"Interactive update failed: {e}")
 
-    def update_all(self) -> dict[str, bool]:
+    def update_all(self, force: bool = False) -> dict[str, bool]:
         """
         Update all enabled remote data sources.
-        
+
+        Args:
+            force: If True, update all sources regardless of update_interval_hours.
+                   If False, only update sources that need update based on interval.
+
         Uses the configured strategy for each source:
+        - NONE: Skip update (built-in sources)
         - ETAG_CHECK: HTTP conditional request
         - TIME_WINDOW: Download only recent changes
         - API_INCREMENTAL: Use API with since parameter
         - FULL: Always download full dataset
-        
+
         Returns:
             Dict of source name -> success status
         """
         results = {}
-        
+        now = datetime.now()
+
         for name, source in self._sources.items():
             if not source.enabled:
                 results[name] = True
                 continue
-            
+
             if source.source_type == DataSourceType.GENERATED:
                 results[name] = True
                 continue
-            
+
+            # Check if update is needed based on interval
+            if not force and source.update_interval_hours > 0 and source.last_updated:
+                try:
+                    last_update = datetime.fromisoformat(source.last_updated)
+                    hours_since = (now - last_update).total_seconds() / 3600
+                    if hours_since < source.update_interval_hours:
+                        logger.debug(
+                            f"Skipping {name}: updated {hours_since:.1f}h ago "
+                            f"(interval: {source.update_interval_hours}h)"
+                        )
+                        results[name] = True
+                        continue
+                except ValueError:
+                    pass  # Invalid timestamp, proceed with update
+
             start_time = time.time()
             try:
                 if source.source_type == DataSourceType.LOCAL_FILE:
@@ -564,22 +620,24 @@ class DataSourceManager:
             finally:
                 source.last_update_duration_ms = (time.time() - start_time) * 1000
                 source.total_updates += 1
-        
+
         self._update_history.append({
             "timestamp": datetime.now().isoformat(),
             "results": results,
             "success_count": sum(1 for v in results.values() if v),
             "total_count": len(results),
         })
-        
+
         # Save state after update
         self.save_state()
-        
+
+        updated_count = sum(1 for name, v in results.items() 
+                           if v and self._sources[name].source_type == DataSourceType.REMOTE_URL)
         logger.info(
             f"Data source update complete: "
-            f"{sum(1 for v in results.values() if v)}/{len(results)} succeeded"
+            f"{updated_count} sources updated"
         )
-        
+
         return results
     
     def update_source(self, name: str) -> bool:
