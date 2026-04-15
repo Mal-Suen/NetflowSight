@@ -311,48 +311,8 @@ class DataSourceManager:
                 expiry_hours=168,
             ),
             # ==========================================
-            # 远程威胁情报源（国内）
-            # ==========================================
-            # 微步在线 ThreatBook (威胁 IP/域名) - 需要付费套餐
-            DataSource(
-                name="threatbook_ip",
-                category=DataSourceCategory.THREAT_IPS,
-                source_type=DataSourceType.REMOTE_URL,
-                url_or_path="https://api.threatbook.cn/v5/ip/query",
-                update_strategy=UpdateStrategy.FULL,
-                update_interval_hours=24,
-                expiry_hours=48,
-                format="json",
-                enabled=False,  # 需要付费 API Key，默认禁用
-            ),
-            # 奇安信威胁情报中心 - 需要企业审核
-            DataSource(
-                name="qianxin_threat_domains",
-                category=DataSourceCategory.THREAT_DOMAINS,
-                source_type=DataSourceType.REMOTE_URL,
-                url_or_path="https://ti.qianxin.com/api/v1/threat/list",
-                update_strategy=UpdateStrategy.FULL,
-                update_interval_hours=24,
-                expiry_hours=48,
-                format="json",
-                enabled=False,  # 需要 API Key，默认禁用
-            ),
-            # ==========================================
             # 免费公开威胁情报源（推荐）
             # ==========================================
-            # PhishTank 钓鱼域名（免费）
-            DataSource(
-                name="phishtank_domains",
-                category=DataSourceCategory.THREAT_DOMAINS,
-                source_type=DataSourceType.REMOTE_URL,
-                url_or_path="https://data.phishtank.com/data/online-valid.csv.gz",
-                update_strategy=UpdateStrategy.FULL,
-                update_interval_hours=24,
-                expiry_hours=48,
-                format="csv",
-                skip_headers=True,
-                csv_column_index=1,  # URL 在第 2 列
-            ),
             # Abuse.ch URLhaus 恶意域名（免费）
             DataSource(
                 name="urlhaus_domains",
