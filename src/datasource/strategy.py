@@ -19,11 +19,12 @@ logger = logging.getLogger(__name__)
 
 class UpdateStrategy(str, Enum):
     """Update strategies for data sources."""
-    FULL = "full"
-    ETAG_CHECK = "etag_check"
-    TIME_WINDOW = "time_window"
-    API_INCREMENTAL = "api_incremental"
-    DIFFERENTIAL = "differential"
+    NONE = "none"  # No update needed (for built-in sources)
+    FULL = "full"  # Full download every time
+    ETAG_CHECK = "etag_check"  # HTTP ETag conditional request
+    TIME_WINDOW = "time_window"  # Time-based incremental update
+    API_INCREMENTAL = "api_incremental"  # API-based incremental update
+    DIFFERENTIAL = "differential"  # Differential update
 
 
 if TYPE_CHECKING:

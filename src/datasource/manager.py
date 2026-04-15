@@ -200,6 +200,7 @@ class DataSourceManager:
                 category=DataSourceCategory.WHITELIST_DOMAINS,
                 source_type=DataSourceType.GENERATED,
                 url_or_path="builtin",
+                update_strategy=UpdateStrategy.NONE,
                 update_interval_hours=0,
                 items={
                     # 国际常用服务
@@ -239,6 +240,7 @@ class DataSourceManager:
                 category=DataSourceCategory.SUSPICIOUS_UA,
                 source_type=DataSourceType.GENERATED,
                 url_or_path="builtin",
+                update_strategy=UpdateStrategy.NONE,
                 update_interval_hours=0,
                 items={
                     "python-requests", "python-urllib", "python-httpx",
@@ -259,6 +261,7 @@ class DataSourceManager:
                 category=DataSourceCategory.PHISHING_KEYWORDS,
                 source_type=DataSourceType.GENERATED,
                 url_or_path="builtin",
+                update_strategy=UpdateStrategy.NONE,
                 update_interval_hours=0,
                 items={
                     "login", "secure", "account", "verify", "update", "confirm",
@@ -281,7 +284,7 @@ class DataSourceManager:
                 category=DataSourceCategory.THREAT_DOMAINS,
                 source_type=DataSourceType.REMOTE_URL,
                 url_or_path="https://openphish.com/feed.txt",
-                update_strategy=UpdateStrategy.FULL,
+                update_strategy=UpdateStrategy.ETAG_CHECK,
                 update_interval_hours=4,
                 expiry_hours=12,
                 format="text",
@@ -292,7 +295,7 @@ class DataSourceManager:
                 category=DataSourceCategory.THREAT_IPS,
                 source_type=DataSourceType.REMOTE_URL,
                 url_or_path="https://www.spamhaus.org/drop/drop.txt",
-                update_strategy=UpdateStrategy.FULL,
+                update_strategy=UpdateStrategy.ETAG_CHECK,
                 update_interval_hours=24,
                 expiry_hours=0,
                 format="text",
@@ -303,7 +306,7 @@ class DataSourceManager:
                 category=DataSourceCategory.THREAT_URLS,
                 source_type=DataSourceType.REMOTE_URL,
                 url_or_path="https://urlhaus.abuse.ch/downloads/csv_recent/",
-                update_strategy=UpdateStrategy.FULL,
+                update_strategy=UpdateStrategy.ETAG_CHECK,
                 format="csv",
                 skip_headers=True,
                 csv_column_index=2,
@@ -319,7 +322,7 @@ class DataSourceManager:
                 category=DataSourceCategory.THREAT_DOMAINS,
                 source_type=DataSourceType.REMOTE_URL,
                 url_or_path="https://urlhaus.abuse.ch/downloads/hostfile/",
-                update_strategy=UpdateStrategy.FULL,
+                update_strategy=UpdateStrategy.ETAG_CHECK,
                 update_interval_hours=12,
                 expiry_hours=24,
                 format="text",
@@ -333,6 +336,7 @@ class DataSourceManager:
                 category=DataSourceCategory.WHITELIST_DOMAINS,
                 source_type=DataSourceType.GENERATED,
                 url_or_path="builtin",
+                update_strategy=UpdateStrategy.NONE,
                 update_interval_hours=0,
                 items={
                     "alicdn.com", "alikunlun.com", "alikunlun.net",
@@ -348,6 +352,7 @@ class DataSourceManager:
                 category=DataSourceCategory.WHITELIST_DOMAINS,
                 source_type=DataSourceType.GENERATED,
                 url_or_path="builtin",
+                update_strategy=UpdateStrategy.NONE,
                 update_interval_hours=0,
                 items={
                     "qcloud.com", "myqcloud.com", "tencent-cloud.net",
@@ -363,6 +368,7 @@ class DataSourceManager:
                 category=DataSourceCategory.WHITELIST_DOMAINS,
                 source_type=DataSourceType.GENERATED,
                 url_or_path="builtin",
+                update_strategy=UpdateStrategy.NONE,
                 update_interval_hours=0,
                 items={
                     "huaweicloud.com", "myhuaweicloud.com",
