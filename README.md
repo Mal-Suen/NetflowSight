@@ -91,27 +91,38 @@ data/reports/
 ```
 NetflowSight/
 ├── src/                          # Core source code
-│   ├── core/                     # Core layer (config, models, NFStream)
+│   ├── core/                     # Core layer (config, models, NFStream, interfaces)
 │   ├── engines/                  # Threat detection engines
-│   │   ├── domain_classifier.py  # ML domain classifier (LightGBM)
-│   │   ├── abuseipdb_detector.py # AbuseIPDB smart detection (3-tier cache)
-│   │   ├── smart_threat.py       # ThreatBook domain verification
 │   │   ├── dns/                  # DNS detection engine
 │   │   ├── http/                 # HTTP detection engine
 │   │   ├── covert/               # Covert channel detection
 │   │   └── behavior/             # Behavioral anomaly detection
+│   ├── intel/                    # Threat intelligence
+│   │   ├── abuseipdb_detector.py # AbuseIPDB smart detection (3-tier cache)
+│   │   └── smart_threat.py       # ThreatBook domain verification
+│   ├── ml/                       # Machine learning
+│   │   ├── anomaly_detector.py   # Isolation Forest anomaly classifier
+│   │   └── domain_classifier.py  # LightGBM domain classifier
 │   ├── datasource/               # Threat intelligence data source management
-│   ├── intel/                    # Threat intelligence clients
-│   ├── ml/                       # ML anomaly classifier (Isolation Forest)
 │   ├── report/                   # Report generation (HTML + JSON)
+│   ├── plugins/                  # Plugin system entry point
 │   ├── analyzer.py               # Main analysis orchestrator
 │   └── cli.py                    # CLI command-line interface
 ├── scripts/                      # Utility scripts
-│   └── train_domain_classifier.py  # Domain classifier training
+│   ├── train_domain_classifier.py  # Domain classifier training
+│   ├── check_sources.py          # Check intelligence update status
+│   ├── update_sources.py         # Manual intelligence update
+│   ├── run.py                    # Interactive test runner
+│   └── test_pcap.py              # End-to-end PCAP analysis test
 ├── models/                       # Trained ML models
 │   └── domain_classifier_v1.pkl  # LightGBM domain classifier (286 KB)
 ├── tests/                        # Unit tests (61 test cases)
-└── data/                         # Data storage (intelligence sources + reports)
+├── data/                         # Data storage
+│   ├── samples/                  # PCAP sample files
+│   ├── reports/                  # Generated analysis reports
+│   └── sources/                  # Threat intelligence data
+├── logs/                         # Runtime logs
+└── .cache/                       # Runtime cache
 ```
 
 ### 📊 Analysis Pipeline
@@ -263,27 +274,38 @@ data/reports/
 ```
 NetflowSight/
 ├── src/                          # 核心源码
-│   ├── core/                     # 核心层（配置、模型、NFStream）
+│   ├── core/                     # 核心层（配置、模型、NFStream、接口）
 │   ├── engines/                  # 威胁检测引擎
-│   │   ├── domain_classifier.py  # ML 域名分类器 (LightGBM)
-│   │   ├── abuseipdb_detector.py # AbuseIPDB 智能检测 (三级缓存)
-│   │   ├── smart_threat.py       # ThreatBook 域名复核
 │   │   ├── dns/                  # DNS 检测引擎
 │   │   ├── http/                 # HTTP 检测引擎
 │   │   ├── covert/               # 隐蔽通道检测
 │   │   └── behavior/             # 行为异常检测
+│   ├── intel/                    # 威胁情报
+│   │   ├── abuseipdb_detector.py # AbuseIPDB 智能检测 (三级缓存)
+│   │   └── smart_threat.py       # ThreatBook 域名复核
+│   ├── ml/                       # 机器学习
+│   │   ├── anomaly_detector.py   # Isolation Forest 异常分类器
+│   │   └── domain_classifier.py  # LightGBM 域名分类器
 │   ├── datasource/               # 威胁情报数据源管理
-│   ├── intel/                    # 威胁情报客户端
-│   ├── ml/                       # ML 异常分类器 (Isolation Forest)
 │   ├── report/                   # 报告生成 (HTML + JSON)
+│   ├── plugins/                  # 插件系统入口
 │   ├── analyzer.py               # 主分析协调器
 │   └── cli.py                    # CLI 命令行接口
 ├── scripts/                      # 工具脚本
-│   └── train_domain_classifier.py  # 模型训练
+│   ├── train_domain_classifier.py  # 模型训练
+│   ├── check_sources.py          # 检查情报更新状态
+│   ├── update_sources.py         # 手动更新情报
+│   ├── run.py                    # 交互式测试运行
+│   └── test_pcap.py              # 端到端 PCAP 分析测试
 ├── models/                       # 训练好的 ML 模型
 │   └── domain_classifier_v1.pkl  # LightGBM 域名分类器 (286 KB)
 ├── tests/                        # 单元测试 (61 个用例)
-└── data/                         # 数据存储 (情报源 + 报告)
+├── data/                         # 数据存储
+│   ├── samples/                  # PCAP 样本文件
+│   ├── reports/                  # 生成的分析报告
+│   └── sources/                  # 威胁情报数据
+├── logs/                         # 运行日志
+└── .cache/                       # 运行时缓存
 ```
 
 ### 📊 分析流程

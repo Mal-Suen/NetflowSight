@@ -1,10 +1,7 @@
-"""
-Threat Intelligence Client for AbuseIPDB and other services
-"""
+"""威胁情报 API 客户端模块"""
 
 import logging
 from typing import Optional
-
 import requests
 
 from core.config import settings
@@ -14,49 +11,25 @@ logger = logging.getLogger(__name__)
 
 
 class ThreatIntelligenceClient:
-    """
-    Client for threat intelligence APIs.
-
-    Supports:
-    - AbuseIPDB
-    - VirusTotal (future)
-    """
+    """威胁情报 API 客户端，支持 AbuseIPDB"""
 
     def __init__(self):
         self.abuseipdb_key = settings.ABUSEIPDB_API_KEY
         self.session = requests.Session()
-        self.session.headers.update({
-            "Accept": "application/json",
-        })
+        self.session.headers.update({"Accept": "application/json"})
 
     def check_abuseipdb(self, ip: str, max_age_days: int = 90) -> Optional[IPReputation]:
-        """
-        Check IP against AbuseIPDB.
-
-        Args:
-            ip: IP address to check
-            max_age_days: Maximum age of reports to consider
-
-        Returns:
-            IPReputation object or None if check fails
-        """
+        """查询 AbuseIPDB 获取 IP 信誉信息"""
         if not self.abuseipdb_key:
-            logger.warning("AbuseIPDB API key not configured")
+            logger.warning("AbuseIPDB API 密钥未配置")
             return None
 
         url = "https://api.abuseipdb.com/api/v2/check"
-        headers = {
-            "Key": self.abuseipdb_key,
-        }
-        params = {
-            "ipAddress": ip,
-            "maxAgeInDays": max_age_days,
-            "verbose": "",
-        }
+        headers = {"Key": self.abuseipdb_key}
+        params = {"ipAddress": ip, "maxAgeInDays": max_age_days, "verbose": ""}
 
         try:
             response = self.session.get(url, headers=headers, params=params, timeout=10)
-
             if response.status_code == 200:
                 data = response.json().get("data", {})
                 return IPReputation(
@@ -71,45 +44,24 @@ class ThreatIntelligenceClient:
                     reports_count=data.get("totalReports", 0),
                 )
             elif response.status_code == 401:
-                logger.error("AbuseIPDB API key is invalid or expired")
+                logger.error("AbuseIPDB API 密钥无效")
             elif response.status_code == 429:
-                logger.warning("AbuseIPDB rate limit exceeded")
+                logger.warning("AbuseIPDB API 请求频率超限")
             else:
-                error_detail = response.content[:200].decode("utf-8", errors="replace")
-                logger.warning(
-                    f"AbuseIPDB request failed: {response.status_code} - {error_detail}"
-                )
+                logger.warning(f"AbuseIPDB 请求失败: {response.status_code}")
         except requests.RequestException as e:
-            logger.error(f"Error querying AbuseIPDB: {e}")
+            logger.error(f"AbuseIPDB 查询异常: {e}")
 
         return None
 
     def check_multiple_ips(self, ips: list[str]) -> dict[str, Optional[IPReputation]]:
-        """
-        Check multiple IPs and return results.
-
-        Args:
-            ips: List of IP addresses
-
-        Returns:
-            Dictionary mapping IP to IPReputation
-        """
-        results = {}
-        for ip in ips:
-            results[ip] = self.check_abuseipdb(ip)
-        return results
+        """批量查询多个 IP"""
+        return {ip: self.check_abuseipdb(ip) for ip in ips}
 
     def close(self):
-        """Close the HTTP session and release resources."""
+        """关闭 HTTP 会话"""
         if self.session:
             self.session.close()
-            logger.debug("Threat intelligence client session closed")
 
-    def __enter__(self):
-        """Context manager entry."""
-        return self
-
-    def __exit__(self, exc_type, exc_val, exc_tb):
-        """Context manager exit."""
-        self.close()
-        return False
+    def __enter__(self): return self
+    def __exit__(self, exc_type, exc_val, exc_tb): self.close(); return False

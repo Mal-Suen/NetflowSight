@@ -1,15 +1,9 @@
-"""
-NetflowSight Plugin System - Core Interfaces
+"""插件系统 - 从 core.interfaces 导出接口"""
 
-This module defines the base interfaces for all detection engines,
-threat intelligence providers, and analysis plugins.
-"""
-
-from .interfaces import (
+from core.interfaces import (
     DetectionEngine,
     DetectionResult,
     ThreatIntelProvider,
-    IPReputation,
     DomainReputation,
     IOC,
     Severity,
@@ -20,7 +14,6 @@ __all__ = [
     "DetectionEngine",
     "DetectionResult",
     "ThreatIntelProvider",
-    "IPReputation",
     "DomainReputation",
     "IOC",
     "Severity",

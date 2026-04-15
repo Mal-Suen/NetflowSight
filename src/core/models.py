@@ -1,6 +1,4 @@
-"""
-Data models for NetflowSight analysis results
-"""
+"""数据模型定义模块"""
 
 from dataclasses import dataclass, field
 from typing import Any, Optional
@@ -8,7 +6,7 @@ from enum import Enum
 
 
 class Severity(str, Enum):
-    """Threat severity levels."""
+    """威胁严重程度等级"""
     LOW = "LOW"
     MEDIUM = "MEDIUM"
     HIGH = "HIGH"
@@ -16,23 +14,13 @@ class Severity(str, Enum):
 
 
 class ThreatType(str, Enum):
-    """Types of detected threats - aligned with MITRE ATT&CK."""
-    # Initial Access
+    """威胁类型枚举（基于 MITRE ATT&CK 框架）"""
+    # 初始访问
     WATERING_HOLE = "WATERING_HOLE"
     PHISHING = "PHISHING"
     PHISHING_DOMAIN = "PHISHING_DOMAIN"
     EXPLOITATION = "EXPLOITATION"
-
-    # Execution
-    MALICIOUS_SCRIPT = "MALICIOUS_SCRIPT"
-    POWERSHELL_ABUSE = "POWERSHELL_ABUSE"
-
-    # Persistence
-    STARTUP_ITEM = "STARTUP_ITEM"
-    SCHEDULED_TASK = "SCHEDULED_TASK"
-    REGISTRY_MODIFICATION = "REGISTRY_MODIFICATION"
-
-    # Command and Control
+    # 命令与控制
     C2_BEACON = "C2_BEACON"
     C2_DATA_EXFIL = "C2_DATA_EXFIL"
     DNS_TUNNEL = "DNS_TUNNEL"
@@ -40,23 +28,19 @@ class ThreatType(str, Enum):
     UNCOMMON_PORT = "UNCOMMON_PORT"
     UNKNOWN_TLS = "UNKNOWN_TLS"
     UNUSUAL_PORT = "UNUSUAL_PORT"
-
-    # Discovery
+    # 发现
     PORT_SCAN = "PORT_SCAN"
     NETWORK_SCAN = "NETWORK_SCAN"
-
-    # Exfiltration
+    # 数据外泄
     DATA_EXFILTRATION = "DATA_EXFILTRATION"
     DNS_EXFILTRATION = "DNS_EXFILTRATION"
     HTTP_EXFILTRATION = "HTTP_EXFILTRATION"
-
-    # Reputation
+    # 信誉
     MALICIOUS_IP = "MALICIOUS_IP"
     MALICIOUS_DOMAIN = "MALICIOUS_DOMAIN"
     DGA_DOMAIN = "DGA_DOMAIN"
     UNKNOWN_DOMAIN = "UNKNOWN_DOMAIN"
-
-    # Anomaly
+    # 异常
     SUSPICIOUS_USER_AGENT = "SUSPICIOUS_USER_AGENT"
     HTTP_POST_ANOMALY = "HTTP_POST_ANOMALY"
     LARGE_DATA_TRANSFER = "LARGE_DATA_TRANSFER"
@@ -68,12 +52,12 @@ class ThreatType(str, Enum):
 
 @dataclass
 class FlowRecord:
-    """Represents a single network flow record."""
+    """网络流记录（五元组）"""
     src_ip: str
     dst_ip: str
     src_port: int
     dst_port: int
-    protocol: int
+    protocol: int  # 6=TCP, 17=UDP, 1=ICMP
     application_name: Optional[str] = None
     bidirectional_packets: int = 0
     bidirectional_bytes: int = 0
@@ -88,7 +72,7 @@ class FlowRecord:
 
 @dataclass
 class ThreatFinding:
-    """Represents a single threat detection finding."""
+    """威胁检测结果"""
     threat_type: ThreatType
     severity: Severity
     description: str
@@ -100,9 +84,9 @@ class ThreatFinding:
 
 @dataclass
 class IPReputation:
-    """IP reputation information from threat intelligence."""
+    """IP 信誉信息（来自 AbuseIPDB）"""
     ip: str
-    abuse_score: int = 0
+    abuse_score: int = 0  # 0-100，越高越可疑
     country_code: Optional[str] = None
     usage_type: Optional[str] = None
     isp: Optional[str] = None
@@ -114,8 +98,8 @@ class IPReputation:
 
 @dataclass
 class AnalysisResult:
-    """Complete analysis result for a PCAP file."""
-    # Summary
+    """完整分析结果"""
+    # 流量摘要
     total_flows: int = 0
     total_packets: int = 0
     total_bytes: int = 0
@@ -123,40 +107,40 @@ class AnalysisResult:
     unique_dst_ips: int = 0
     protocol_distribution: dict = field(default_factory=dict)
     time_range: Optional[dict] = None
-    
-    # Threat detection
+
+    # 威胁检测结果
     threats: list[ThreatFinding] = field(default_factory=list)
     high_severity_count: int = 0
     medium_severity_count: int = 0
     low_severity_count: int = 0
-    
-    # ML analysis
+
+    # ML 异常检测
     ml_predictions: Optional[dict] = None
     anomaly_count: int = 0
-    
-    # Threat intelligence
+
+    # 威胁情报
     ip_reputations: list[IPReputation] = field(default_factory=list)
     malicious_ips: list = field(default_factory=list)
-    
-    # AI report
+
+    # AI 报告
     ai_report: Optional[str] = None
-    
-    # Metadata
+
+    # 元数据
     pcap_file: str = ""
     analysis_timestamp: str = ""
     processing_time_ms: float = 0.0
     cost_estimate: dict = field(default_factory=lambda: {"local": "$0", "ai_tokens": 0})
-    
+
     def get_threats_by_severity(self, severity: Severity) -> list[ThreatFinding]:
-        """Get threats filtered by severity."""
+        """按严重程度筛选威胁"""
         return [t for t in self.threats if t.severity == severity]
-    
+
     def get_threats_by_type(self, threat_type: ThreatType) -> list[ThreatFinding]:
-        """Get threats filtered by type."""
+        """按威胁类型筛选威胁"""
         return [t for t in self.threats if t.threat_type == threat_type]
-    
+
     def to_dict(self) -> dict[str, Any]:
-        """Convert to dictionary for JSON serialization."""
+        """转换为字典格式，用于 JSON 序列化"""
         return {
             "summary": {
                 "total_flows": self.total_flows,
@@ -180,13 +164,11 @@ class AnalysisResult:
                         "evidence": t.evidence,
                         "recommendation": getattr(t, 'recommended_action', None) or getattr(t, 'recommendation', ''),
                     }
-                    for t in self.threats[:100]  # Limit for serialization
+                    for t in self.threats[:100]
                 ],
             },
             "ml_analysis": self.ml_predictions,
-            "threat_intelligence": {
-                "malicious_ips": self.malicious_ips[:50],
-            },
+            "threat_intelligence": {"malicious_ips": self.malicious_ips[:50]},
             "ai_report": self.ai_report,
             "metadata": {
                 "pcap_file": self.pcap_file,

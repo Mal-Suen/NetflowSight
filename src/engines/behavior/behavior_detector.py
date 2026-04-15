@@ -7,7 +7,7 @@ import re
 import time
 from typing import Any, Optional
 import pandas as pd
-from plugins.interfaces import DetectionEngine, DetectionResult, Severity, ThreatType
+from core.interfaces import DetectionEngine, DetectionResult, Severity, ThreatType
 
 logger = logging.getLogger(__name__)
 

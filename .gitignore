@@ -25,6 +25,7 @@ Thumbs.db
 
 # Data (exclude large files)
 data/reports/
+data/samples/reports/
 data/*.pcap
 data/sources/abuseipdb_*.json
 data/sources/threatbook_*.json
@@ -37,11 +38,14 @@ data/sources/state.json
 *.log
 logs/
 
-# Test files
-test_pcap.py
-test_threatbook.py
-check_sources.py
-update_sources.py
+# Cache
+.cache/
+
+# Test files (moved to scripts/)
+# test_pcap.py
+# test_threatbook.py
+# check_sources.py
+# update_sources.py
 
 # Qwen Code
 .qwen/
