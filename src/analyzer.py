@@ -1,4 +1,4 @@
-"""主分析器模块 - 协调所有检测引擎"""
+"""主分析器模块 - 协调所有检测引擎（插件化架构）"""
 
 import logging
 import time
@@ -11,22 +11,19 @@ import pandas as pd
 from core.parser import FlowStreamAnalyzer
 from core.config import settings
 from core.models import AnalysisResult, Severity
-from engines.dns import DNSThreatDetector
-from engines.http import HTTPThreatDetector
-from engines.covert import CovertChannelDetector
-from engines.behavior import BehavioralAnomalyDetector
+from datasource.manager import DataSourceManager, DataSourceCategory
 from intel.smart_threat import SmartThreatDetector
 from intel.abuseipdb_detector import AbuseIPDBSmartDetector
-from datasource.manager import DataSourceManager, DataSourceCategory
 from intel.cache import ThreatCache
 from ml.classifier import MLAnomalyClassifier
 from report.generator import ReportGenerator
+from plugins import PluginManager
 
 logger = logging.getLogger(__name__)
 
 
 class NetflowSightAnalyzer:
-    """主分析器 - 协调所有检测引擎"""
+    """主分析器 - 协调所有检测引擎（插件化架构）"""
 
     def __init__(
         self,
@@ -36,6 +33,7 @@ class NetflowSightAnalyzer:
         enable_ai: bool = False,
         ai_client: Optional[object] = None,
         interactive: bool = False,
+        plugin_dirs: Optional[list[str]] = None,
     ):
         self.pcap_file = pcap_file
         self.enable_ml = enable_ml
@@ -60,22 +58,36 @@ class NetflowSightAnalyzer:
             interactive=interactive,
         )
 
-        # 初始化检测引擎
-        safe_domains = settings.load_safe_domains()
-        self.dns_detector = DNSThreatDetector(safe_domains=safe_domains)
-        self.http_detector = HTTPThreatDetector()
-        self.covert_detector = CovertChannelDetector()
-        self.behavior_detector = BehavioralAnomalyDetector()
-        self.smart_threat_detector = SmartThreatDetector() if enable_threat_intel else None
-        self._safe_domains = safe_domains
+        # 初始化插件管理器
+        self.plugin_manager = PluginManager()
+        self._init_plugins(plugin_dirs)
 
         # ML 分类器和 IP 信誉检测器
         self.ml_classifier = MLAnomalyClassifier() if enable_ml else None
         self.abuseipdb_detector = AbuseIPDBSmartDetector() if enable_threat_intel else None
+        self.smart_threat_detector = SmartThreatDetector() if enable_threat_intel else None
         self.threat_cache = ThreatCache()
 
         self._df: Optional[pd.DataFrame] = None
         self._result: Optional[AnalysisResult] = None
+
+    def _init_plugins(self, plugin_dirs: Optional[list[str]] = None):
+        """初始化插件系统"""
+        # 加载内置插件
+        loaded = self.plugin_manager.load_builtin_plugins()
+        logger.info(f"加载内置插件: {loaded}")
+
+        # 加载外部插件
+        project_root = Path(__file__).resolve().parent.parent
+        external_dir = project_root / "src" / "plugins" / "external"
+        if external_dir.exists():
+            external_loaded = self.plugin_manager.load_external_plugins(str(external_dir))
+            logger.info(f"加载外部插件: {external_loaded}")
+
+        # 加载自定义插件目录
+        if plugin_dirs:
+            for plugin_dir in plugin_dirs:
+                self.plugin_manager.load_external_plugins(plugin_dir)
 
     def analyze(self) -> AnalysisResult:
         """运行完整的分析流程"""
@@ -93,15 +105,9 @@ class NetflowSightAnalyzer:
             logger.info("[2/6] 运行 ML 异常检测...")
             self._df = self.ml_classifier.predict(self._df)
 
-        # [3/6] 威胁检测引擎
-        logger.info("[3/6] 运行威胁检测引擎...")
-        all_threats = []
-        threat_domains = self.datasource_mgr.get_items(DataSourceCategory.THREAT_DOMAINS)
-
-        all_threats.extend(self.dns_detector.run(self._df, threat_domains=threat_domains))
-        all_threats.extend(self.http_detector.run(self._df))
-        all_threats.extend(self.covert_detector.run(self._df))
-        all_threats.extend(self.behavior_detector.run(self._df))
+        # [3/6] 插件化威胁检测
+        logger.info("[3/6] 运行检测插件...")
+        all_threats = self._run_plugins()
 
         # 智能威胁检测
         if self.enable_threat_intel and self.smart_threat_detector:
@@ -158,6 +164,46 @@ class NetflowSightAnalyzer:
 
         logger.info(f"分析完成，耗时 {processing_time:.0f}ms")
         return self._result
+
+    def _run_plugins(self) -> list:
+        """运行所有检测插件"""
+        # 构建上下文
+        context = {
+            "safe_domains": self.datasource_mgr.get_items(DataSourceCategory.WHITELIST_DOMAINS),
+            "threat_domains": self.datasource_mgr.get_items(DataSourceCategory.THREAT_DOMAINS),
+            "threat_ips": self.datasource_mgr.get_items(DataSourceCategory.THREAT_IPS),
+            "threat_urls": self.datasource_mgr.get_items(DataSourceCategory.THREAT_URLS),
+            "suspicious_ua": self.datasource_mgr.get_items(DataSourceCategory.SUSPICIOUS_UA),
+            "phishing_keywords": self.datasource_mgr.get_items(DataSourceCategory.PHISHING_KEYWORDS),
+            "datasource_manager": self.datasource_mgr,
+            "config": {},
+        }
+
+        # 执行所有插件
+        results = self.plugin_manager.run_all(self._df, context)
+
+        # 转换为兼容格式
+        from plugins.base import DetectionResult
+        threats = []
+        for r in results:
+            if isinstance(r, DetectionResult):
+                # 转换为 core.models 的 ThreatAlert 格式
+                from core.models import ThreatAlert, ThreatType, Severity
+                threat = ThreatAlert(
+                    threat_type=ThreatType(r.threat_type.value),
+                    severity=Severity(r.severity.value),
+                    description=r.description,
+                    evidence=r.evidence,
+                    confidence=r.confidence,
+                    ioc=r.ioc,
+                    mitre_technique=r.mitre_technique,
+                    recommended_action=r.recommended_action,
+                )
+                threats.append(threat)
+            else:
+                threats.append(r)
+
+        return threats
 
     def _generate_ai_report(self, threats: list) -> Optional[str]:
         if not self.ai_client:
@@ -223,3 +269,23 @@ class NetflowSightAnalyzer:
         if self._df is None:
             raise RuntimeError("必须先调用 analyze() 方法")
         return self._df
+
+    # ==========================================
+    # 插件管理接口
+    # ==========================================
+
+    def list_plugins(self) -> list[dict]:
+        """列出所有插件"""
+        return self.plugin_manager.list_plugins()
+
+    def enable_plugin(self, name: str) -> bool:
+        """启用插件"""
+        return self.plugin_manager.enable_plugin(name)
+
+    def disable_plugin(self, name: str) -> bool:
+        """禁用插件"""
+        return self.plugin_manager.disable_plugin(name)
+
+    def get_plugin_stats(self) -> dict:
+        """获取插件统计"""
+        return self.plugin_manager.get_stats()

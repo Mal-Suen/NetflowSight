@@ -23,14 +23,6 @@ env/
 .DS_Store
 Thumbs.db
 
-# Data (exclude large files)
-data/reports/
-data/samples/reports/
-data/*.pcap
-data/sources/abuseipdb_*.json
-data/sources/threatbook_*.json
-data/sources/state.json
-
 # Environment
 .env
 
@@ -40,15 +32,15 @@ logs/
 
 # Cache
 .cache/
+.pytest_cache/
+.ruff_cache/
 
-# Test files (moved to scripts/)
-# test_pcap.py
-# test_threatbook.py
-# check_sources.py
-# update_sources.py
-
-# Qwen Code
-.qwen/
+# Data files (generated at runtime)
+data/reports/*.html
+data/reports/*.json
 
 # ML Models (large binary files, retrain via scripts/train_domain_classifier.py)
 models/*.pkl
+
+# Qwen Code
+.qwen/

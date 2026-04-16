@@ -8,8 +8,8 @@ from typing import Optional
 
 import pandas as pd
 
-from ..core.parser import FlowStreamAnalyzer
-from ..core.config import settings
+from core.parser import FlowStreamAnalyzer
+from core.config import settings
 
 logger = logging.getLogger(__name__)
 

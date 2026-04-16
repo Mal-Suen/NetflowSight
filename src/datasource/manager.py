@@ -209,7 +209,7 @@ class DataSourceManager:
                     "outlook.com", "teams.microsoft.com", "facebook.com", "fbcdn.net",
                     "cloudflare.com", "cloudfront.net", "amazonaws.com", "apple.com",
                     "icloud.com", "github.com", "linkedin.com", "twitter.com",
-                    # 国内常用服务（白名单）
+                    # 国内常用服务
                     "baidu.com", "www.baidu.com", "bdstatic.com", "baidubce.com",
                     "aliyun.com", "aliyuncs.com", "alipay.com", "alipayobjects.com",
                     "taobao.com", "tmall.com", "alicdn.com", "tbcdn.cn",
@@ -226,8 +226,14 @@ class DataSourceManager:
                     "zhihu.com", "zhimg.com",
                     "tencent.com", "tencent-cloud.net", "qcloud.com",
                     "cdn-go.cn", "gtimg.com", "idqqimg.com",
+                    # 阿里云 CDN/云服务
+                    "alikunlun.com", "alikunlun.net", "cdngslb.com", "alibabacloud.com",
+                    # 腾讯云 CDN/云服务
+                    "myqcloud.com", "tencentclb.com", "tencentcos.cn",
+                    # 华为云 CDN/云服务
+                    "huaweicloud.com", "myhuaweicloud.com", "huaweicloud.cn", "hwcdn.net",
                 },
-                version="2.0.0",
+                version="3.0.0",
                 last_updated=datetime.now().isoformat(),
                 health_status="healthy",
             ),
@@ -327,58 +333,43 @@ class DataSourceManager:
                 format="text",
             ),
             # ==========================================
-            # 国内安全厂商白名单（需手动维护或 API 接入）
+            # 恶意 IP 黑名单
             # ==========================================
-            # 阿里云 CDN/云服务域名
+            # Spamhaus DROP Extended (扩展恶意 IP 段)
             DataSource(
-                name="aliyun_cdn_whitelist",
-                category=DataSourceCategory.WHITELIST_DOMAINS,
-                source_type=DataSourceType.GENERATED,
-                url_or_path="builtin",
-                update_strategy=UpdateStrategy.NONE,
-                update_interval_hours=0,
-                items={
-                    "alicdn.com", "alikunlun.com", "alikunlun.net",
-                    "cdngslb.com", "alibabacloud.com", "aliyuncs.com",
-                },
-                version="1.0.0",
-                last_updated=datetime.now().isoformat(),
-                health_status="healthy",
+                name="spamhaus_drop_extended",
+                category=DataSourceCategory.THREAT_IPS,
+                source_type=DataSourceType.REMOTE_URL,
+                url_or_path="https://www.spamhaus.org/drop/edrop.txt",
+                update_strategy=UpdateStrategy.ETAG_CHECK,
+                update_interval_hours=24,
+                expiry_hours=0,
+                format="text",
             ),
-            # 腾讯云 CDN/云服务域名
+            # Blocklist.de (攻击 IP 列表)
             DataSource(
-                name="tencent_cdn_whitelist",
-                category=DataSourceCategory.WHITELIST_DOMAINS,
-                source_type=DataSourceType.GENERATED,
-                url_or_path="builtin",
-                update_strategy=UpdateStrategy.NONE,
-                update_interval_hours=0,
-                items={
-                    "qcloud.com", "myqcloud.com", "tencent-cloud.net",
-                    "cdn-go.cn", "tencentclb.com", "tencentcos.cn",
-                },
-                version="1.0.0",
-                last_updated=datetime.now().isoformat(),
-                health_status="healthy",
+                name="blocklist_de",
+                category=DataSourceCategory.THREAT_IPS,
+                source_type=DataSourceType.REMOTE_URL,
+                url_or_path="https://lists.blocklist.de/lists/all.txt",
+                update_strategy=UpdateStrategy.ETAG_CHECK,
+                update_interval_hours=6,
+                expiry_hours=24,
+                format="text",
             ),
-            # 华为云 CDN/云服务域名
+            # FireHOL Level 1 (高可信度恶意 IP)
             DataSource(
-                name="huawei_cdn_whitelist",
-                category=DataSourceCategory.WHITELIST_DOMAINS,
-                source_type=DataSourceType.GENERATED,
-                url_or_path="builtin",
-                update_strategy=UpdateStrategy.NONE,
-                update_interval_hours=0,
-                items={
-                    "huaweicloud.com", "myhuaweicloud.com",
-                    "huaweicloud.cn", "hwcdn.net",
-                },
-                version="1.0.0",
-                last_updated=datetime.now().isoformat(),
-                health_status="healthy",
+                name="firehol_level1",
+                category=DataSourceCategory.THREAT_IPS,
+                source_type=DataSourceType.REMOTE_URL,
+                url_or_path="https://iplists.firehol.org/files/firehol_level1.netset",
+                update_strategy=UpdateStrategy.ETAG_CHECK,
+                update_interval_hours=24,
+                expiry_hours=48,
+                format="text",
             ),
         ]
-        
+
         for source in defaults:
             self._sources[source.name] = source
             source.item_count = len(source.items)
@@ -1018,6 +1009,21 @@ class DataSourceManager:
         if format == "text":
             items = {line.strip() for line in content.splitlines()
                      if line.strip() and not line.startswith("#")}
+
+        elif format == "hosts":
+            # Parse hosts file format: IP domain [domain...]
+            # Extract domains, skip IP addresses
+            for line in content.splitlines():
+                line = line.strip()
+                if not line or line.startswith("#"):
+                    continue
+                parts = line.split()
+                if len(parts) >= 2:
+                    # Skip the IP (first part), take domains
+                    for domain in parts[1:]:
+                        domain = domain.strip().lower()
+                        if domain and not domain.startswith("#"):
+                            items.add(domain)
 
         elif format == "csv":
             import io

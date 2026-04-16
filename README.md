@@ -105,7 +105,11 @@ NetflowSight/
 │   │   └── domain_classifier.py  # LightGBM domain classifier
 │   ├── datasource/               # Threat intelligence data source management
 │   ├── report/                   # Report generation (HTML + JSON)
-│   ├── plugins/                  # Plugin system entry point
+│   ├── plugins/                  # Plugin system (extensible detection)
+│   │   ├── base.py               # Plugin base class
+│   │   ├── manager.py            # Plugin manager
+│   │   ├── adapters.py           # Built-in engine adapters
+│   │   └── external/             # External plugins directory
 │   ├── analyzer.py               # Main analysis orchestrator
 │   └── cli.py                    # CLI command-line interface
 ├── scripts/                      # Utility scripts
@@ -172,6 +176,7 @@ python -m cli analyze <pcap_file>
 
 *   [📊 Engineering Report](docs/ENGINEERING_REPORT.md) - Complete architecture design
 *   [📁 Data Source Guide](docs/data_source_guide.md) - Threat intelligence configuration guide
+*   [🔌 Plugin Development](docs/plugin_development.md) - Plugin system and custom detection
 *   [🚀 Quick Start](docs/QUICK_START.md) - 5-minute getting started guide
 
 ### 🤝 Contributing
@@ -288,7 +293,11 @@ NetflowSight/
 │   │   └── domain_classifier.py  # LightGBM 域名分类器
 │   ├── datasource/               # 威胁情报数据源管理
 │   ├── report/                   # 报告生成 (HTML + JSON)
-│   ├── plugins/                  # 插件系统入口
+│   ├── plugins/                  # 插件系统 (可扩展检测)
+│   │   ├── base.py               # 插件基类
+│   │   ├── manager.py            # 插件管理器
+│   │   ├── adapters.py           # 内置引擎适配器
+│   │   └── external/             # 外部插件目录
 │   ├── analyzer.py               # 主分析协调器
 │   └── cli.py                    # CLI 命令行接口
 ├── scripts/                      # 工具脚本
@@ -355,6 +364,7 @@ python -m cli analyze <pcap文件>
 
 *   [📊 工程报告](docs/ENGINEERING_REPORT.md) - 完整架构设计
 *   [📁 数据源管理](docs/data_source_guide.md) - 威胁情报配置指南
+*   [🔌 插件开发](docs/plugin_development.md) - 插件系统与自定义检测
 *   [🚀 快速开始](docs/QUICK_START.md) - 5 分钟上手指南
 
 ### 🤝 贡献
