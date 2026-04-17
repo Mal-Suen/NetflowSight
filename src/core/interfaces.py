@@ -10,12 +10,12 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Any, Optional, Protocol
+from typing import Any, Protocol
 
 import pandas as pd
 
 # Re-export canonical enums and models from core.models to avoid duplication
-from core.models import Severity, ThreatType, IPReputation
+from core.models import IPReputation, Severity, ThreatType
 
 logger = logging.getLogger(__name__)
 
@@ -24,7 +24,7 @@ logger = logging.getLogger(__name__)
 class DetectionResult:
     """
     Standardized detection result from any engine.
-    
+
     This ensures all engines return consistent, actionable data.
     """
     engine_name: str
@@ -38,7 +38,7 @@ class DetectionResult:
     mitre_technique: str = ""  # MITRE ATT&CK technique ID (e.g., "T1071.004")
     recommended_action: str = ""
     timestamp: str = field(default_factory=lambda: datetime.now().isoformat())
-    
+
     def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary for JSON serialization."""
         return {
@@ -59,45 +59,45 @@ class DetectionResult:
 class DetectionEngine(Protocol):
     """
     Protocol that all detection engines must implement.
-    
+
     This enables:
     - Standardized execution
     - Hot-reloading
     - Dynamic configuration
     - Health monitoring
     """
-    
+
     # Engine metadata
     name: str
     version: str
     description: str
     enabled: bool
-    
-    def run(self, df: pd.DataFrame, context: Optional[dict] = None) -> list[DetectionResult]:
+
+    def run(self, df: pd.DataFrame, context: dict | None = None) -> list[DetectionResult]:
         """
         Run detection against flow data.
-        
+
         Args:
             df: DataFrame with flow records from NFStream
             context: Optional context (baseline, config, etc.)
-            
+
         Returns:
             List of standardized detection results
         """
         ...
-    
+
     def get_config(self) -> dict[str, Any]:
         """Return current engine configuration."""
         ...
-    
+
     def set_config(self, config: dict[str, Any]) -> None:
         """Update engine configuration dynamically."""
         ...
-    
+
     def health_check(self) -> dict[str, Any]:
         """
         Return engine health status.
-        
+
         Returns:
             {
                 "status": "healthy" | "degraded" | "unhealthy",
@@ -121,11 +121,11 @@ class ThreatIntelProvider(Protocol):
     cost_tier: str  # "free", "freemium", "paid"
     rate_limit: int  # requests per minute
 
-    def check_ip(self, ip: str) -> Optional[IPReputation]:
+    def check_ip(self, ip: str) -> IPReputation | None:
         """Check IP reputation."""
         ...
 
-    def check_domain(self, domain: str) -> Optional[DomainReputation]:
+    def check_domain(self, domain: str) -> DomainReputation | None:
         """Check domain reputation."""
         ...
 
@@ -141,13 +141,13 @@ class DomainReputation:
     threat_score: float
     source: str
     tags: list[str] = field(default_factory=list)
-    category: Optional[str] = None
+    category: str | None = None
     is_dga: bool = False
     is_phishing: bool = False
     is_malware: bool = False
-    first_seen: Optional[str] = None
-    last_seen: Optional[str] = None
-    raw_data: Optional[dict] = None
+    first_seen: str | None = None
+    last_seen: str | None = None
+    raw_data: dict | None = None
 
 
 @dataclass

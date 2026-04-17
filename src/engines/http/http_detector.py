@@ -1,10 +1,12 @@
 """HTTP/HTTPS 威胁检测引擎"""
 
 from __future__ import annotations
+
 import logging
-from typing import Any, Optional
+
 import pandas as pd
-from core.interfaces import DetectionEngine, DetectionResult, Severity, ThreatType
+
+from core.interfaces import DetectionResult, Severity, ThreatType
 
 logger = logging.getLogger(__name__)
 
@@ -23,7 +25,7 @@ class HTTPThreatDetector:
         "java/", "nikto", "sqlmap", "nmap"
     ]
 
-    def run(self, df: pd.DataFrame, context: Optional[dict] = None) -> list[DetectionResult]:
+    def run(self, df: pd.DataFrame, context: dict | None = None) -> list[DetectionResult]:
         """运行 HTTP 威胁检测"""
         results = []
         results.extend(self._detect_anomaly(df))

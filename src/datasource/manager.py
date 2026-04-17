@@ -30,8 +30,8 @@ from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from enum import Enum
 from pathlib import Path
-from typing import Any, Optional
-from urllib.error import HTTPError, URLError
+from typing import Any
+from urllib.error import HTTPError
 from urllib.request import Request, urlopen
 
 from .strategy import StrategyRecommender, UpdateStrategy
@@ -75,7 +75,7 @@ class DataSource:
     update_strategy: UpdateStrategy = UpdateStrategy.ETAG_CHECK
 
     # Incremental update config
-    incremental_url_template: Optional[str] = None  # e.g., "https://example.com/data?since={last_updated}"
+    incremental_url_template: str | None = None  # e.g., "https://example.com/data?since={last_updated}"
     incremental_window_hours: int = 24  # Max hours to look back for incremental updates
     cleanup_expired: bool = True  # Whether to cleanup expired items
     expiry_hours: int = 168  # Items expire after this many hours (for incremental sources)
@@ -86,19 +86,19 @@ class DataSource:
 
     # State
     version: str = ""
-    last_updated: Optional[str] = None
+    last_updated: str | None = None
     last_hash: str = ""
     item_count: int = 0
     health_status: str = "unknown"
-    error_message: Optional[str] = None
+    error_message: str | None = None
     total_updates: int = 0
     last_update_duration_ms: float = 0.0
-    
+
     # Data
     items: set[str] = field(default_factory=set)
     item_timestamps: dict[str, str] = field(default_factory=dict)  # item -> when it was added
     metadata: dict[str, Any] = field(default_factory=dict)
-    
+
     def to_dict(self) -> dict[str, Any]:
         return {
             "name": self.name,
@@ -123,7 +123,7 @@ class DataSource:
 class DataSourceManager:
     """
     Central manager for all data sources.
-    
+
     Supports:
     - Full updates
     - ETag-based conditional updates
@@ -131,7 +131,7 @@ class DataSourceManager:
     - API-based incremental updates
     - Version control and rollback
     """
-    
+
     # Default update strategies
     DEFAULT_STRATEGIES: dict[str, UpdateStrategy] = {
         "spamhaus_drop": UpdateStrategy.ETAG_CHECK,
@@ -140,7 +140,7 @@ class DataSourceManager:
         "phishtank_urls": UpdateStrategy.TIME_WINDOW,
         "threatfox_iocs": UpdateStrategy.TIME_WINDOW,
     }
-    
+
     def __init__(
         self,
         data_dir: str = "data/sources",
@@ -160,7 +160,7 @@ class DataSourceManager:
 
         # Initialize default sources
         self._register_default_sources()
-        
+
         # Auto-detect and apply optimal strategies
         if auto_detect_strategies:
             self.auto_optimize_strategies()
@@ -187,7 +187,7 @@ class DataSourceManager:
         else:
             # Non-interactive subsequent runs: use cached data
             logger.debug("Using cached data sources (non-interactive mode)")
-    
+
     def _register_default_sources(self) -> None:
         """Register built-in default data sources."""
         defaults = [
@@ -375,27 +375,27 @@ class DataSourceManager:
             source.item_count = len(source.items)
             # Track when built-in items were "added"
             now = datetime.now().isoformat()
-            source.item_timestamps = {item: now for item in source.items}
+            source.item_timestamps = dict.fromkeys(source.items, now)
             self._merge_source_data(source)
-        
+
         logger.info(f"Registered {len(defaults)} built-in data sources")
-    
+
     def add_source(self, source: DataSource) -> None:
         """Add a new data source."""
         self._sources[source.name] = source
-        
+
         # Set default strategy if not specified
         if source.update_strategy == UpdateStrategy.ETAG_CHECK:
             source.update_strategy = self.DEFAULT_STRATEGIES.get(source.name, UpdateStrategy.ETAG_CHECK)
-        
+
         # If local file, load it immediately
         if source.source_type == DataSourceType.LOCAL_FILE:
             self._update_local_source(source)
         else:
             self._merge_source_data(source)
-        
+
         logger.info(f"Added data source: {source.name} ({source.source_type.value}, strategy: {source.update_strategy.value})")
-    
+
     def remove_source(self, name: str) -> bool:
         """Remove a data source."""
         if name in self._sources:
@@ -404,7 +404,7 @@ class DataSourceManager:
             logger.info(f"Removed data source: {name}")
             return True
         return False
-    
+
     def enable_source(self, name: str) -> bool:
         """Enable a data source."""
         if name in self._sources:
@@ -412,7 +412,7 @@ class DataSourceManager:
             self._merge_source_data(self._sources[name])
             return True
         return False
-    
+
     def disable_source(self, name: str) -> bool:
         """Disable a data source."""
         if name in self._sources:
@@ -421,19 +421,19 @@ class DataSourceManager:
             self._unmerge_source_data(source)
             return True
         return False
-    
-    def get_source(self, name: str) -> Optional[DataSource]:
+
+    def get_source(self, name: str) -> DataSource | None:
         """Get a data source by name."""
         return self._sources.get(name)
-    
+
     def list_sources(self) -> list[dict[str, Any]]:
         """List all data sources with status."""
         return [s.to_dict() for s in self._sources.values()]
-    
+
     def lookup(self, category: DataSourceCategory, value: str) -> bool:
         """
         Check if a value exists in a category's combined data.
-        
+
         Supports:
         - Exact match
         - Suffix match (for domains)
@@ -441,39 +441,39 @@ class DataSourceManager:
         - Prefix match (for IPs)
         """
         combined = self._combined_data.get(category, set())
-        
+
         if value in combined:
             return True
-        
+
         value_lower = value.lower()
-        
+
         if category == DataSourceCategory.WHITELIST_DOMAINS:
             for item in combined:
                 # Exact match or proper domain suffix match (not substring)
                 if value_lower == item or value_lower.endswith("." + item):
                     return True
-        
+
         if category == DataSourceCategory.WHITELIST_IPS:
             for item in combined:
                 if value.startswith(item):
                     return True
-        
+
         if category == DataSourceCategory.SUSPICIOUS_UA:
             for item in combined:
                 if item in value_lower:
                     return True
-        
+
         if category == DataSourceCategory.PHISHING_KEYWORDS:
             for item in combined:
                 if item in value_lower:
                     return True
-        
+
         return False
-    
+
     def get_items(self, category: DataSourceCategory) -> set[str]:
         """Get all items in a category."""
         return self._combined_data.get(category, set()).copy()
-    
+
     def _ask_and_update(self) -> None:
         """
         Interactively ask user if they want to update data sources.
@@ -533,13 +533,13 @@ class DataSourceManager:
                 print("\n🔄 正在更新数据源...")
                 results = self.update_all(force=False)
                 success = sum(1 for v in results.values() if v)
-                total = len([r for r in remote_sources])
+                total = len(list(remote_sources))
                 print(f"✅ 更新完成: {success}/{total} 个数据源成功")
             elif choice in ("y", "yes"):
                 print("\n🔄 正在强制更新所有数据源...")
                 results = self.update_all(force=True)
                 success = sum(1 for v in results.values() if v)
-                total = len([r for r in remote_sources])
+                total = len(list(remote_sources))
                 print(f"✅ 更新完成: {success}/{total} 个数据源成功")
             else:
                 print("⏭️ 跳过更新，使用缓存数据")
@@ -622,7 +622,7 @@ class DataSourceManager:
         # Save state after update
         self.save_state()
 
-        updated_count = sum(1 for name, v in results.items() 
+        updated_count = sum(1 for name, v in results.items()
                            if v and self._sources[name].source_type == DataSourceType.REMOTE_URL)
         logger.info(
             f"Data source update complete: "
@@ -630,13 +630,13 @@ class DataSourceManager:
         )
 
         return results
-    
+
     def update_source(self, name: str) -> bool:
         """Update a specific data source."""
         source = self._sources.get(name)
         if not source or not source.enabled:
             return False
-        
+
         start_time = time.time()
         try:
             if source.source_type == DataSourceType.LOCAL_FILE:
@@ -653,21 +653,21 @@ class DataSourceManager:
         finally:
             source.last_update_duration_ms = (time.time() - start_time) * 1000
             source.total_updates += 1
-        
+
         return True
-    
+
     def _update_local_source(self, source: DataSource) -> bool:
         """Update from local文件."""
         try:
             path = Path(source.url_or_path)
             if not path.is_absolute():
                 path = Path(self.data_dir) / source.url_or_path
-            
+
             if not path.exists():
                 source.health_status = "unhealthy"
                 source.error_message = f"File not found: {path}"
                 return False
-            
+
             items = self._load_file(path, source.format)
             self._apply_update(source, items, is_incremental=False)
             return True
@@ -675,11 +675,11 @@ class DataSourceManager:
             source.health_status = "unhealthy"
             source.error_message = str(e)
             return False
-    
+
     def _update_remote_source(self, source: DataSource) -> bool:
         """Update from remote URL using configured strategy."""
         strategy = source.update_strategy
-        
+
         if strategy == UpdateStrategy.TIME_WINDOW:
             return self._update_with_time_window(source)
         elif strategy == UpdateStrategy.DIFFERENTIAL:
@@ -687,8 +687,8 @@ class DataSourceManager:
         else:
             # Default: ETag check with full download
             return self._update_with_etag(source)
-    
-    def _fetch_and_decompress(self, url: str, last_hash: str = "") -> tuple[Optional[str], str]:
+
+    def _fetch_and_decompress(self, url: str, last_hash: str = "") -> tuple[str | None, str]:
         """
         Download remote file and automatically handle gzip/zip decompression.
         Returns: (content_str, etag) or (None, etag) if 304 Not Modified.
@@ -777,7 +777,7 @@ class DataSourceManager:
             source.health_status = "unhealthy"
             source.error_message = str(e)
             return False
-    
+
     def _update_with_time_window(self, source: DataSource) -> bool:
         """
         Update using time-window incremental download.
@@ -816,11 +816,11 @@ class DataSourceManager:
         except Exception as e:
             logger.warning(f"Source {source.name}: Incremental failed ({e}), falling back to full")
             return self._update_with_etag(source)
-    
+
     def _update_incremental_from_url(self, source: DataSource, url: str) -> bool:
         """
         Download incremental data from URL and merge.
-        
+
         Incremental data can be:
         1. List of new items only (additive)
         2. List with +/- prefixes (differential: +new, -removed)
@@ -828,20 +828,20 @@ class DataSourceManager:
         try:
             req = Request(url)
             req.add_header("User-Agent", "NetflowSight/1.0.0 (Incremental)")
-            
+
             with urlopen(req, timeout=30) as response:
                 content = response.read().decode("utf-8")
                 new_items = self._parse_content(content, source.format, source)
-                
+
                 if not new_items:
                     logger.debug(f"Source {source.name}: No new items")
                     return True
-                
+
                 # Check if differential format (+/- prefixes)
                 has_diff_format = any(item.startswith(("+", "-")) for item in new_items if item)
-                
+
                 old_count = len(source.items)
-                
+
                 if has_diff_format:
                     # Differential update
                     added = 0
@@ -857,7 +857,7 @@ class DataSourceManager:
                             source.items.discard(item[1:])
                             source.item_timestamps.pop(item[1:], None)
                             removed += 1
-                    
+
                     logger.info(
                         f"Source {source.name}: Differential update "
                         f"+{added} -{removed} (total: {len(source.items)})"
@@ -868,29 +868,29 @@ class DataSourceManager:
                         if item not in source.items:
                             source.items.add(item)
                             source.item_timestamps[item] = datetime.now().isoformat()
-                    
+
                     added = len(source.items) - old_count
                     logger.info(
                         f"Source {source.name}: Incremental update "
                         f"+{added} items (total: {len(source.items)})"
                     )
-                
+
                 # Cleanup expired items
                 if source.cleanup_expired:
                     cleaned = self._cleanup_expired_items(source)
                     if cleaned > 0:
                         logger.info(f"Source {source.name}: Cleaned {cleaned} expired items")
-                
+
                 source.item_count = len(source.items)
                 source.version = self._compute_version(source.items)
                 source.last_updated = datetime.now().isoformat()
                 source.health_status = "healthy"
                 source.error_message = None
-                
+
                 # Re-merge
                 self._unmerge_source_data(source)
                 self._merge_source_data(source)
-                
+
                 return True
         except HTTPError as e:
             if e.code == 404:
@@ -901,35 +901,35 @@ class DataSourceManager:
             source.health_status = "degraded"
             source.error_message = f"Incremental update failed: {e}"
             raise
-    
+
     def _update_with_differential(self, source: DataSource) -> bool:
         """
         Update using differential files.
-        
+
         Expects diff files at: {base_url}/diff-{old_version}-{new_version}.ext
         Falls back to full update if diff not available.
         """
         if not source.version:
             return self._update_with_etag(source)
-        
+
         # Try to find and apply diff
         # This is source-specific, so we use a generic approach
         return self._update_with_time_window(source)
-    
+
     def _update_api_source(self, source: DataSource) -> bool:
         """Update from API (supports incremental via API parameters)."""
         source.health_status = "degraded"
         source.error_message = "API source not implemented yet"
         return False
-    
+
     def _cleanup_expired_items(self, source: DataSource) -> int:
         """Remove items older than expiry_hours."""
         if not source.item_timestamps:
             return 0
-        
+
         cutoff = datetime.now() - timedelta(hours=source.expiry_hours)
         expired = []
-        
+
         for item, timestamp_str in source.item_timestamps.items():
             try:
                 timestamp = datetime.fromisoformat(timestamp_str)
@@ -937,18 +937,18 @@ class DataSourceManager:
                     expired.append(item)
             except (ValueError, TypeError):
                 pass
-        
+
         for item in expired:
             source.items.discard(item)
             source.item_timestamps.pop(item, None)
-        
+
         return len(expired)
-    
+
     def _apply_update(self, source: DataSource, new_items: set[str], is_incremental: bool = False) -> None:
         """Apply new data to a source."""
         old_count = source.item_count
         old_hash = self._compute_hash(source.items)
-        
+
         if is_incremental:
             # Merge new items
             for item in new_items:
@@ -959,16 +959,16 @@ class DataSourceManager:
             # Full replacement
             source.items = new_items
             source.item_timestamps = {item: datetime.now().isoformat() for item in new_items}
-        
+
         source.item_count = len(source.items)
         source.last_updated = datetime.now().isoformat()
         source.version = self._compute_version(source.items)
         source.health_status = "healthy"
         source.error_message = None
-        
+
         new_hash = self._compute_hash(source.items)
         changed = old_hash != new_hash
-        
+
         if changed:
             logger.info(
                 f"Source {source.name} updated: "
@@ -976,27 +976,27 @@ class DataSourceManager:
             )
             self._unmerge_source_data(source)
             self._merge_source_data(source)
-    
+
     def _merge_source_data(self, source: DataSource) -> None:
         """Merge source data into combined data."""
         category = source.category
         if category not in self._combined_data:
             self._combined_data[category] = set()
         self._combined_data[category].update(source.items)
-    
+
     def _unmerge_source_data(self, source: DataSource) -> None:
         """Remove source data from combined data."""
         category = source.category
         if category in self._combined_data:
             self._combined_data[category] -= source.items
-    
+
     def _load_file(self, path: Path, format: str) -> set[str]:
         """Load data from a file."""
-        with open(path, "r", encoding="utf-8") as f:
+        with open(path, encoding="utf-8") as f:
             content = f.read()
         return self._parse_content(content, format)
-    
-    def _parse_content(self, content: str, format: str, source: Optional["DataSource"] = None) -> set[str]:
+
+    def _parse_content(self, content: str, format: str, source: DataSource | None = None) -> set[str]:
         """Parse content based on format.
 
         Args:
@@ -1052,19 +1052,19 @@ class DataSourceManager:
                         break
 
         return items
-    
+
     @staticmethod
     def _compute_hash(items: set[str]) -> str:
         """Compute hash of item set for change detection."""
         content = "|".join(sorted(items))
         return hashlib.md5(content.encode()).hexdigest()[:8]
-    
+
     @staticmethod
     def _compute_version(items: set[str]) -> str:
         """Generate version string."""
         h = hashlib.md5("|".join(sorted(items)).encode()).hexdigest()[:6]
         return f"1.{len(items)}.{h}"
-    
+
     def get_stats(self) -> dict[str, Any]:
         """Get data source statistics."""
         return {
@@ -1074,11 +1074,11 @@ class DataSourceManager:
             "total_items": {cat.value: len(items) for cat, items in self._combined_data.items()},
             "last_update": self._update_history[-1] if self._update_history else None,
             "strategies": {
-                name: source.update_strategy.value 
+                name: source.update_strategy.value
                 for name, source in self._sources.items()
             },
         }
-    
+
     def export_config(self) -> dict[str, Any]:
         """Export data source configuration."""
         return {
@@ -1101,7 +1101,7 @@ class DataSourceManager:
                 if s.source_type != DataSourceType.GENERATED
             ],
         }
-    
+
     def import_config(self, config: dict[str, Any]) -> int:
         """Import data source configuration."""
         count = 0
@@ -1124,33 +1124,33 @@ class DataSourceManager:
             except Exception as e:
                 logger.error(f"Failed to import source {src_config.get('name', 'unknown')}: {e}")
         return count
-    
+
     def auto_optimize_strategies(self) -> dict[str, dict]:
         """
         Automatically detect source characteristics and optimize update strategies.
-        
+
         Returns:
             Dict of recommendations and changes applied
         """
         logger.info("Auto-detecting optimal strategies for all sources...")
         recommendations = self._recommender.detect_all(self._sources)
         changes = self._recommender.apply_recommendations(self)
-        
+
         # Log summary
         changed_count = sum(1 for v in changes.values() if v)
         logger.info(f"Strategy optimization complete: {changed_count}/{len(changes)} sources updated")
-        
+
         return recommendations
-    
+
     def recommend_strategies(self) -> dict[str, dict]:
         """
         Get strategy recommendations without applying them.
-        
+
         Returns:
             Detailed recommendations for review
         """
         return self._recommender.detect_all(self._sources)
-    
+
     def get_strategy_report(self) -> dict[str, Any]:
         """
         Get detailed report on strategy effectiveness.
@@ -1163,18 +1163,18 @@ class DataSourceManager:
                 "avg_success_rate": 0,
             }
         }
-        
+
         total_success = 0
         total_updates = 0
-        
+
         for name, source in self._sources.items():
             history = self._recommender._history.get(name, [])
             success_count = sum(1 for h in history if h.get("success", True))
             etag_hits = sum(1 for h in history if h.get("etag_hit", False))
-            
+
             success_rate = success_count / len(history) if history else 1.0
             etag_rate = etag_hits / len(history) if history else 0
-            
+
             report["sources"][name] = {
                 "current_strategy": source.update_strategy.value,
                 "success_rate": round(success_rate, 2),
@@ -1183,23 +1183,23 @@ class DataSourceManager:
                 "avg_duration_ms": round(source.last_update_duration_ms, 1),
                 "recommendation": "Optimal" if success_rate > 0.9 else "Consider review",
             }
-            
+
             # Aggregate by strategy
             strat = source.update_strategy.value
             if strat not in report["summary"]["by_strategy"]:
                 report["summary"]["by_strategy"][strat] = {"count": 0, "avg_success": 0}
             report["summary"]["by_strategy"][strat]["count"] += 1
-            
+
             total_success += success_count
             total_updates += len(history) if history else 1
-        
+
         report["summary"]["avg_success_rate"] = round(
             total_success / max(total_updates, 1), 2
         )
-        
+
         return report
 
-    def save_state(self, path: Optional[str] = None) -> str:
+    def save_state(self, path: str | None = None) -> str:
         """Save current state to disk (excluding large item sets)."""
         state_path = Path(path) if path else self.data_dir / "state.json"
 
@@ -1237,14 +1237,14 @@ class DataSourceManager:
 
         return str(state_path)
 
-    def load_state(self, path: Optional[str] = None) -> bool:
+    def load_state(self, path: str | None = None) -> bool:
         """Load state from disk (items are reloaded from sources, not from state)."""
         state_path = Path(path) if path else self.data_dir / "state.json"
         if not state_path.exists():
             return False
 
         try:
-            with open(state_path, "r", encoding="utf-8") as f:
+            with open(state_path, encoding="utf-8") as f:
                 state = json.load(f)
 
             for name, s_state in state.get("sources", {}).items():

@@ -1,7 +1,9 @@
 """微步在线 ThreatBook API 客户端模块"""
 
+import contextlib
 import logging
 from typing import Optional
+
 import requests
 
 from core.config import settings
@@ -96,7 +98,5 @@ class ThreatBookClient:
             self.session.close()
 
     def __del__(self):
-        try:
+        with contextlib.suppress(Exception):
             self.close()
-        except Exception:
-            pass

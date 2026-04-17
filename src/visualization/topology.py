@@ -4,9 +4,10 @@ Generates node and link data for visualization (e.g., Echarts).
 """
 
 from __future__ import annotations
+
 import ipaddress
 import re
-from typing import Dict, List, Any, Set, Optional, Tuple
+from typing import Any
 
 import pandas as pd
 
@@ -15,21 +16,21 @@ _IP_PATTERN = re.compile(r'\b(?:\d{1,3}\.){3}\d{1,3}\b')
 _DOMAIN_PATTERN = re.compile(r'\b(?:[a-zA-Z0-9-]+\.)+[a-zA-Z]{2,}\b')
 
 
-def get_topology_data(df: pd.DataFrame, min_bytes: int = 1000) -> Dict[str, Any]:
+def get_topology_data(df: pd.DataFrame, min_bytes: int = 1000) -> dict[str, Any]:
     """
     全量拓扑：提取所有通信关系。
     """
     return _build_topology(df, min_bytes=min_bytes, highlight_ips=None, highlight_domains=None)
 
 
-def get_threat_topology(df: pd.DataFrame, threat_ips: Optional[Set[str]] = None, threat_domains: Optional[Set[str]] = None) -> Dict[str, Any]:
+def get_threat_topology(df: pd.DataFrame, threat_ips: set[str] | None = None, threat_domains: set[str] | None = None) -> dict[str, Any]:
     """
     情报威胁拓扑：仅展示命中情报库（恶意 IP/域名）的关系。
     """
     return _build_topology(df, min_bytes=0, highlight_ips=threat_ips, highlight_domains=threat_domains)
 
 
-def get_anomaly_topology(df: pd.DataFrame, alert_ips: Optional[Set[str]] = None, alert_domains: Optional[Set[str]] = None) -> Dict[str, Any]:
+def get_anomaly_topology(df: pd.DataFrame, alert_ips: set[str] | None = None, alert_domains: set[str] | None = None) -> dict[str, Any]:
     """
     异常拓扑：展示所有检测引擎发现的高危/中危异常行为涉及的关系。
     不仅显示 IP，还显示可疑域名。
@@ -37,7 +38,7 @@ def get_anomaly_topology(df: pd.DataFrame, alert_ips: Optional[Set[str]] = None,
     return _build_topology(df, min_bytes=0, highlight_ips=alert_ips, highlight_domains=alert_domains)
 
 
-def extract_alert_iocs_from_threats(threats: List[dict]) -> Tuple[Set[str], Set[str]]:
+def extract_alert_iocs_from_threats(threats: list[dict]) -> tuple[set[str], set[str]]:
     """
     从检测引擎的威胁结果中提取所有涉及的 IP 地址和域名。
     """
@@ -50,9 +51,7 @@ def extract_alert_iocs_from_threats(threats: List[dict]) -> Tuple[Set[str], Set[
         if not s or '.' not in s or s.endswith('.'):
             return False
         # 排除明显的 IP 地址
-        if _IP_PATTERN.match(s) and s.count('.') == 3:
-            return False
-        return True
+        return not (_IP_PATTERN.match(s) and s.count('.') == 3)
 
     for threat in threats:
         # 1. 从证据字段提取
@@ -66,7 +65,7 @@ def extract_alert_iocs_from_threats(threats: List[dict]) -> Tuple[Set[str], Set[
                 if isinstance(d, str) and is_valid_domain(d):
                     domains.add(d)
 
-        for key, val in evidence.items():
+        for _key, val in evidence.items():
             if isinstance(val, str):
                 ips.update(_IP_PATTERN.findall(val))
                 # 尝试从文本中提取域名
@@ -102,17 +101,21 @@ def extract_alert_iocs_from_threats(threats: List[dict]) -> Tuple[Set[str], Set[
     return ips, domains
 
 
-def _build_topology(df: pd.DataFrame, min_bytes: int = 1000, highlight_ips: Optional[Set[str]] = None, highlight_domains: Optional[Set[str]] = None) -> Dict[str, Any]:
+def _build_topology(df: pd.DataFrame, min_bytes: int = 1000, highlight_ips: set[str] | None = None, highlight_domains: set[str] | None = None) -> dict[str, Any]:
     if df is None or df.empty:
         return {"nodes": [], "links": []}
 
     # 1. 数据清洗：过滤无效 IP
     def is_valid_ip(ip_str):
-        if pd.isna(ip_str): return False
+        if pd.isna(ip_str):
+            return False
         ip_str = str(ip_str).strip()
-        if not ip_str: return False
-        if ip_str in ('0.0.0.0', '255.255.255.255', '127.0.0.1'): return False
-        if ip_str.endswith('.255'): return False
+        if not ip_str:
+            return False
+        if ip_str in ('0.0.0.0', '255.255.255.255', '127.0.0.1'):
+            return False
+        if ip_str.endswith('.255'):
+            return False
         try:
             ip = ipaddress.ip_address(ip_str)
             return not (ip.is_multicast or ip.is_link_local or ip.is_unspecified or ip.is_reserved)
@@ -125,7 +128,7 @@ def _build_topology(df: pd.DataFrame, min_bytes: int = 1000, highlight_ips: Opti
         df_clean = df[valid_src & valid_dst]
     except Exception:
         return {"nodes": [], "links": []}
-    
+
     if df_clean.empty:
         return {"nodes": [], "links": []}
 
@@ -144,16 +147,16 @@ def _build_topology(df: pd.DataFrame, min_bytes: int = 1000, highlight_ips: Opti
 
     # 3. 过滤逻辑
     filtered_links = []
-    
+
     # 如果提供了高亮 IP 或域名，仅保留涉及这些指标的流
     if highlight_ips or highlight_domains:
         for _, row in agg_df.iterrows():
             match_ip = False
             match_domain = False
-            
+
             if highlight_ips and (row['src_ip'] in highlight_ips or row['dst_ip'] in highlight_ips):
                 match_ip = True
-            
+
             if highlight_domains:
                 # 检查 SNI 是否包含目标域名
                 for sni in row['sni_str']:
@@ -161,14 +164,15 @@ def _build_topology(df: pd.DataFrame, min_bytes: int = 1000, highlight_ips: Opti
                         if sni == target_domain or sni.endswith('.' + target_domain):
                             match_domain = True
                             break
-                    if match_domain: break
-            
+                    if match_domain:
+                        break
+
             if match_ip or match_domain:
                 filtered_links.append(row)
-        
+
         if not filtered_links:
             return {"nodes": [], "links": []} # 没有命中目标
-        
+
         agg_df = pd.DataFrame(filtered_links)
 
     # 全量模式：仅过滤小流量
@@ -187,18 +191,18 @@ def _build_topology(df: pd.DataFrame, min_bytes: int = 1000, highlight_ips: Opti
         val = int(row.value)
         label = str(row.label)
         sni_list = row.sni_str # List of domains associated with this flow
-        
+
         # 收集 IP 节点
         if src not in nodes_data:
             nodes_data[src] = {'id': src, 'type': 'ip'}
         if dst not in nodes_data:
             nodes_data[dst] = {'id': dst, 'type': 'ip'}
-        
+
         # 判断是否为高亮连线（威胁或异常）
         is_highlighted = False
         if highlight_ips and (src in highlight_ips or dst in highlight_ips):
             is_highlighted = True
-        
+
         # 如果命中了域名，也算高亮
         if highlight_domains:
             for sni in sni_list:
@@ -213,7 +217,7 @@ def _build_topology(df: pd.DataFrame, min_bytes: int = 1000, highlight_ips: Opti
                             "source": src,
                             "target": domain,
                             "value": val, # Use flow value
-                            "label": f"访问域名",
+                            "label": "访问域名",
                             "isHighlighted": True,
                             "lineStyle": {
                                 "width": 3.0,
@@ -223,7 +227,7 @@ def _build_topology(df: pd.DataFrame, min_bytes: int = 1000, highlight_ips: Opti
                             }
                         })
                         break
-        
+
         # 添加主 IP -> IP 连线
         links.append({
             "source": src,
@@ -234,7 +238,7 @@ def _build_topology(df: pd.DataFrame, min_bytes: int = 1000, highlight_ips: Opti
             "lineStyle": {
                 "width": float(min(val / 1000000.0 + 1.0, 6.0)),
                 "curveness": 0.2,
-                "color": "#ef4444" if is_highlighted else "source" 
+                "color": "#ef4444" if is_highlighted else "source"
             }
         })
 
@@ -242,16 +246,16 @@ def _build_topology(df: pd.DataFrame, min_bytes: int = 1000, highlight_ips: Opti
     nodes = []
     src_traffic = df_clean.groupby('src_ip')['bidirectional_bytes'].sum()
     dst_traffic = df_clean.groupby('dst_ip')['bidirectional_bytes'].sum()
-    
+
     for item_id, item_info in nodes_data.items():
         if item_info['type'] == 'ip':
             t_src = int(src_traffic.get(item_id, 0))
             t_dst = int(dst_traffic.get(item_id, 0))
             traffic = max(t_src, t_dst)
-            
+
             category = _get_ip_category(item_id)
             is_bad_actor = (highlight_ips and item_id in highlight_ips)
-            
+
             # 如果该 IP 访问了高亮域名，也算异常
             if highlight_domains:
                 # Check if this IP is connected to any highlighted domain
@@ -259,12 +263,12 @@ def _build_topology(df: pd.DataFrame, min_bytes: int = 1000, highlight_ips: Opti
                     if link.get('source') == item_id and link.get('isHighlighted') and link.get('target') in highlight_domains:
                         is_bad_actor = True
                         break
-            
+
             color = _get_category_color(category)
             if is_bad_actor:
                 category = "Threat Node"
-                color = "#dc2626" 
-            
+                color = "#dc2626"
+
             nodes.append({
                 "id": item_id,
                 "name": item_id,
@@ -287,7 +291,7 @@ def _build_topology(df: pd.DataFrame, min_bytes: int = 1000, highlight_ips: Opti
                     "formatter": f"<b>{{b}}</b><br/>IP<br/>流量: {traffic/1024:.1f} KB"
                 }
             })
-        
+
         elif item_info['type'] == 'domain':
             # Domain node
             nodes.append({
@@ -309,7 +313,7 @@ def _build_topology(df: pd.DataFrame, min_bytes: int = 1000, highlight_ips: Opti
                     "color": "#f97316"
                 },
                 "tooltip": {
-                    "formatter": f"<b>{{b}}</b><br/>可疑域名"
+                    "formatter": "<b>{b}</b><br/>可疑域名"
                 }
             })
 

@@ -13,7 +13,7 @@ Features:
 - Version control and rollback
 """
 
-from .manager import DataSource, DataSourceManager, DataSourceType, DataSourceCategory
+from .manager import DataSource, DataSourceCategory, DataSourceManager, DataSourceType
 from .strategy import StrategyRecommender, StrategyScore, UpdateStrategy
 
 __all__ = [

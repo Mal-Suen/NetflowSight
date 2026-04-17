@@ -2,6 +2,7 @@
 
 import logging
 from typing import Optional
+
 import requests
 
 from core.config import settings
@@ -63,5 +64,9 @@ class ThreatIntelligenceClient:
         if self.session:
             self.session.close()
 
-    def __enter__(self): return self
-    def __exit__(self, exc_type, exc_val, exc_tb): self.close(); return False
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        self.close()
+        return False

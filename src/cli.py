@@ -1,7 +1,6 @@
 """命令行界面模块"""
 
 import logging
-import sys
 import warnings
 from datetime import datetime
 from pathlib import Path
@@ -9,12 +8,12 @@ from pathlib import Path
 warnings.filterwarnings("ignore", message=".*numexpr.*")
 warnings.filterwarnings("ignore", message=".*feature names.*")
 
-import click
-from rich.console import Console
-from rich.panel import Panel
+import click  # noqa: E402
+from rich.console import Console  # noqa: E402
+from rich.panel import Panel  # noqa: E402
 
-from analyzer import NetflowSightAnalyzer
-from core.config import settings
+from analyzer import NetflowSightAnalyzer  # noqa: E402
+from core.config import settings  # noqa: E402
 
 console = Console()
 
@@ -69,7 +68,7 @@ def analyze(pcap_file, output, format, no_ml, no_threat_intel, verbose):
 
     # 执行分析
     console.print("⏳ 正在分析 PCAP 文件...", style="yellow")
-    result = analyzer.analyze()
+    analyzer.analyze()
     console.print("✅ 分析完成!", style="green")
     console.print("")
 
@@ -100,14 +99,14 @@ def analyze(pcap_file, output, format, no_ml, no_threat_intel, verbose):
 
     # 保存 JSON 报告
     analyzer.generate_report(format="json", output_path=json_output, generate_ai_report=False)
-    console.print(f"\n💾 报告已保存:")
+    console.print("\n💾 报告已保存:")
     console.print(f"   🌐 HTML: {output}")
     console.print(f"   📋 JSON: {json_output}", style="green")
 
     # 显示 API 使用情况
     if analyzer.abuseipdb_detector:
         stats = analyzer.abuseipdb_detector.get_stats()
-        console.print(f"\n🌐 AbuseIPDB API 使用情况:")
+        console.print("\n🌐 AbuseIPDB API 使用情况:")
         console.print(f"   已查询: {stats['api_queries']} 次")
         console.print(f"   缓存命中: {stats['cache_hits']} 次")
         console.print(f"   白名单: {stats['whitelist_size']} 个 IP")
@@ -115,7 +114,7 @@ def analyze(pcap_file, output, format, no_ml, no_threat_intel, verbose):
 
     if analyzer.smart_threat_detector:
         smart_stats = analyzer.smart_threat_detector.get_stats()
-        console.print(f"\n🔍 微步 ThreatBook API 使用情况:")
+        console.print("\n🔍 微步 ThreatBook API 使用情况:")
         console.print(f"   已查询: {smart_stats['api_queries']} 次")
         console.print(f"   缓存命中: {smart_stats['cache_hits']} 次")
         console.print(f"   白名单: {smart_stats['whitelist_size']} 个域名")
@@ -172,8 +171,8 @@ def explore(pcap_file, port, ip, protocol, top):
 @click.argument("ip")
 def check_ip(ip):
     """查询单个 IP 的信誉信息"""
-    from .intel.client import ThreatIntelligenceClient
     from .intel.cache import ThreatCache
+    from .intel.client import ThreatIntelligenceClient
 
     console.print(f"🌐 查询 IP: {ip}", style="blue")
 
@@ -198,7 +197,7 @@ def check_ip(ip):
     reputation = client.check_abuseipdb(ip)
     if reputation:
         cache.set(reputation)
-        console.print(f"✅ IP 信誉信息:", style="green")
+        console.print("✅ IP 信誉信息:", style="green")
         console.print(f"   滥用评分: {reputation.abuse_score}")
         console.print(f"   国家: {reputation.country_code}")
         console.print(f"   使用类型: {reputation.usage_type}")

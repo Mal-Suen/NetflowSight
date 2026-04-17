@@ -1,9 +1,17 @@
 """核心模块 - 配置、模型、解析器和接口"""
 
-from .parser import FlowStreamAnalyzer
-from .models import FlowRecord, AnalysisResult, Severity, ThreatType, IPReputation
 from .config import settings
-from .interfaces import DetectionEngine, DetectionResult, ThreatIntelProvider, DomainReputation, IOC
+from .interfaces import IOC, DetectionEngine, DetectionResult, DomainReputation, ThreatIntelProvider
+from .models import (
+    AnalysisResult,
+    FlowRecord,
+    IPReputation,
+    Severity,
+    ThreatAlert,
+    ThreatFinding,
+    ThreatType,
+)
+from .parser import FlowStreamAnalyzer
 
 __all__ = [
     "FlowStreamAnalyzer",
@@ -12,6 +20,8 @@ __all__ = [
     "Severity",
     "ThreatType",
     "IPReputation",
+    "ThreatAlert",
+    "ThreatFinding",
     "settings",
     "DetectionEngine",
     "DetectionResult",

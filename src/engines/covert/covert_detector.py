@@ -2,11 +2,12 @@
 Covert Channel Detection Engine
 """
 from __future__ import annotations
+
 import logging
-import time
-from typing import Any, Optional
+
 import pandas as pd
-from core.interfaces import DetectionEngine, DetectionResult, Severity, ThreatType
+
+from core.interfaces import DetectionResult, Severity, ThreatType
 
 logger = logging.getLogger(__name__)
 
@@ -16,7 +17,7 @@ class CovertChannelDetector:
     description = "隐蔽通道检测引擎"
     enabled = True
 
-    def run(self, df: pd.DataFrame, context: Optional[dict] = None) -> list[DetectionResult]:
+    def run(self, df: pd.DataFrame, context: dict | None = None) -> list[DetectionResult]:
         results = []
         results.extend(self._detect_icmp(df))
         results.extend(self._detect_dns_exfil(df))
@@ -27,8 +28,9 @@ class CovertChannelDetector:
     def _detect_icmp(self, df: pd.DataFrame) -> list[DetectionResult]:
         results = []
         icmp = df[df["protocol"] == 1]
-        if icmp.empty: return results
-        
+        if icmp.empty:
+            return results
+
         for _, r in icmp[icmp["bidirectional_bytes"] > 1000].iterrows():
             results.append(DetectionResult(
                 engine_name=self.name, engine_version="2.0.0",
@@ -43,8 +45,9 @@ class CovertChannelDetector:
     def _detect_dns_exfil(self, df: pd.DataFrame) -> list[DetectionResult]:
         results = []
         dns = df[df["application_name"] == "DNS"]
-        if dns.empty: return results
-        
+        if dns.empty:
+            return results
+
         for _, r in dns[dns["bidirectional_bytes"] > 500].iterrows():
             results.append(DetectionResult(
                 engine_name=self.name, engine_version="2.0.0",
@@ -58,10 +61,12 @@ class CovertChannelDetector:
 
     def _detect_unknown_tls(self, df: pd.DataFrame) -> list[DetectionResult]:
         results = []
-        if "application_name" not in df.columns: return results
+        if "application_name" not in df.columns:
+            return results
         tls = df[df["application_name"] == "TLS"]
-        if tls.empty: return results
-        
+        if tls.empty:
+            return results
+
         unknown = tls[tls.get("application_confidence", 100) < 50] if "application_confidence" in tls.columns else tls
         for ip, group in unknown.groupby("dst_ip"):
             if len(group) >= 5:
@@ -89,6 +94,11 @@ class CovertChannelDetector:
             ))
         return results
 
-    def get_config(self): return {}
-    def set_config(self, c): pass
-    def health_check(self): return {"status": "healthy"}
+    def get_config(self):
+        return {}
+
+    def set_config(self, c):
+        pass
+
+    def health_check(self):
+        return {"status": "healthy"}

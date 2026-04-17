@@ -1,10 +1,12 @@
 """Tests for threat intelligence cache"""
 
 import time
+
 import pytest
-from intel.cache import ThreatCache
-from core.models import IPReputation
+
 from core.config import settings
+from core.models import IPReputation
+from intel.cache import ThreatCache
 
 
 @pytest.fixture

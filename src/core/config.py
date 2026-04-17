@@ -57,7 +57,7 @@ class Settings:
         domains_file = Path(cls.SAFE_DOMAINS_FILE)
         if domains_file.exists():
             try:
-                with open(domains_file, "r") as f:
+                with open(domains_file) as f:
                     for line in f:
                         domain = line.strip()
                         if domain and not domain.startswith("#"):

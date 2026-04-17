@@ -2,12 +2,13 @@
 Behavioral Anomaly Detection Engine
 """
 from __future__ import annotations
+
 import logging
 import re
-import time
-from typing import Any, Optional
+
 import pandas as pd
-from core.interfaces import DetectionEngine, DetectionResult, Severity, ThreatType
+
+from core.interfaces import DetectionResult, Severity, ThreatType
 
 logger = logging.getLogger(__name__)
 
@@ -20,7 +21,7 @@ class BehavioralAnomalyDetector:
     PRIVATE_IP_PATTERN = re.compile(r"^(10\.|192\.168\.|172\.(1[6-9]|2[0-9]|3[01])\.|127\.)")
     SAFE_PREFIXES = ["8.8.", "1.1.", "52.", "54.", "13.", "104.", "172.217."]
 
-    def run(self, df: pd.DataFrame, context: Optional[dict] = None) -> list[DetectionResult]:
+    def run(self, df: pd.DataFrame, context: dict | None = None) -> list[DetectionResult]:
         results = []
         results.extend(self._detect_large_transfers(df))
         results.extend(self._detect_suspicious_comm(df))

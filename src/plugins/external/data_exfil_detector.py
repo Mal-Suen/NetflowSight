@@ -7,16 +7,16 @@
 from __future__ import annotations
 
 import logging
-from typing import Any, Optional
+from typing import Any
 
 import pandas as pd
 
+from core.models import Severity, ThreatType
 from plugins.base import (
     BaseDetectionPlugin,
     DetectionResult,
     PluginMetadata,
 )
-from core.models import Severity, ThreatType
 
 logger = logging.getLogger(__name__)
 
@@ -30,7 +30,7 @@ class DataExfiltrationDetector(BaseDetectionPlugin):
     - 可疑端口上传（非标准端口的大流量）
     """
 
-    def __init__(self, config: Optional[dict[str, Any]] = None):
+    def __init__(self, config: dict[str, Any] | None = None):
         super().__init__(config)
         self._default_config = {
             "bytes_threshold": 100_000_000,  # 100MB
@@ -57,7 +57,7 @@ class DataExfiltrationDetector(BaseDetectionPlugin):
     def run(
         self,
         df: pd.DataFrame,
-        context: Optional[dict[str, Any]] = None
+        context: dict[str, Any] | None = None
     ) -> list[DetectionResult]:
         if df.empty:
             return []

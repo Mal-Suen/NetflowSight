@@ -143,4 +143,4 @@ class MLAnomalyClassifier:
             self._is_fitted = True
             logger.info(f"模型已从 {path} 加载")
         except Exception as e:
-            raise RuntimeError(f"加载模型失败: {e}")
+            raise RuntimeError(f"加载模型失败: {e}") from e

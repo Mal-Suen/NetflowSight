@@ -10,49 +10,13 @@ import logging
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Any, Optional
+from typing import Any
 
 import pandas as pd
 
-from core.models import Severity, ThreatType
+from core.interfaces import DetectionResult
 
 logger = logging.getLogger(__name__)
-
-
-@dataclass
-class DetectionResult:
-    """
-    标准化检测结果。
-
-    所有插件必须返回此格式的结果列表。
-    """
-    engine_name: str
-    engine_version: str
-    threat_type: ThreatType
-    severity: Severity
-    description: str
-    evidence: dict[str, Any]
-    confidence: float  # 0.0 - 1.0
-    ioc: list[str] = field(default_factory=list)
-    mitre_technique: str = ""
-    recommended_action: str = ""
-    timestamp: str = field(default_factory=lambda: datetime.now().isoformat())
-
-    def to_dict(self) -> dict[str, Any]:
-        """转换为字典用于 JSON 序列化"""
-        return {
-            "engine_name": self.engine_name,
-            "engine_version": self.engine_version,
-            "threat_type": self.threat_type.value,
-            "severity": self.severity.value,
-            "description": self.description,
-            "evidence": self.evidence,
-            "confidence": round(self.confidence, 3),
-            "ioc": self.ioc,
-            "mitre_technique": self.mitre_technique,
-            "recommended_action": self.recommended_action,
-            "timestamp": self.timestamp,
-        }
 
 
 @dataclass
@@ -83,19 +47,19 @@ class BaseDetectionPlugin(ABC):
     - set_config(): 动态配置
     """
 
-    def __init__(self, config: Optional[dict[str, Any]] = None):
+    def __init__(self, config: dict[str, Any] | None = None):
         self._config = config or {}
         self._initialized = False
-        self._last_run_time: Optional[float] = None
+        self._last_run_time: float | None = None
         self._last_run_duration_ms: float = 0.0
         self._total_detections: int = 0
-        self._error: Optional[str] = None
+        self._error: str | None = None
 
     @abstractmethod
     def run(
         self,
         df: pd.DataFrame,
-        context: Optional[dict[str, Any]] = None
+        context: dict[str, Any] | None = None
     ) -> list[DetectionResult]:
         """
         执行检测逻辑。
@@ -177,7 +141,7 @@ class BaseDetectionPlugin(ABC):
         """是否启用"""
         return self.get_metadata().enabled and self._initialized
 
-    def _record_run(self, duration_ms: float, detections: int, error: Optional[str] = None):
+    def _record_run(self, duration_ms: float, detections: int, error: str | None = None):
         """记录运行统计"""
         self._last_run_time = datetime.now().isoformat()
         self._last_run_duration_ms = duration_ms

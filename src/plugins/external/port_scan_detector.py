@@ -17,16 +17,16 @@ from __future__ import annotations
 
 import logging
 from collections import defaultdict
-from typing import Any, Optional
+from typing import Any
 
 import pandas as pd
 
+from core.models import Severity, ThreatType
 from plugins.base import (
     BaseDetectionPlugin,
     DetectionResult,
     PluginMetadata,
 )
-from core.models import Severity, ThreatType
 
 logger = logging.getLogger(__name__)
 
@@ -40,7 +40,7 @@ class PortScanDetector(BaseDetectionPlugin):
     - 阈值可配置
     """
 
-    def __init__(self, config: Optional[dict[str, Any]] = None):
+    def __init__(self, config: dict[str, Any] | None = None):
         super().__init__(config)
         # 默认配置
         self._default_config = {
@@ -72,7 +72,7 @@ class PortScanDetector(BaseDetectionPlugin):
     def run(
         self,
         df: pd.DataFrame,
-        context: Optional[dict[str, Any]] = None
+        context: dict[str, Any] | None = None
     ) -> list[DetectionResult]:
         """
         执行端口扫描检测。

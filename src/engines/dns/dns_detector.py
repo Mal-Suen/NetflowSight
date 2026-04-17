@@ -1,11 +1,14 @@
 """DNS 威胁检测引擎 - 黑名单匹配 + ML 分类 + DGA + 隧道检测"""
 
 from __future__ import annotations
+
 import logging
 import math
-from typing import Any, Optional
+from typing import Any
+
 import pandas as pd
-from core.interfaces import DetectionEngine, DetectionResult, Severity, ThreatType
+
+from core.interfaces import DetectionResult, Severity, ThreatType
 from ml.domain_classifier import DomainClassifier
 
 logger = logging.getLogger(__name__)
@@ -19,7 +22,7 @@ class DNSThreatDetector:
     description = "DNS 威胁检测引擎"
     enabled = True
 
-    def __init__(self, safe_domains: Optional[set[str]] = None, config: Optional[dict] = None):
+    def __init__(self, safe_domains: set[str] | None = None, config: dict | None = None):
         default_safe = {
             "google.com", "googleapis.com", "gstatic.com", "googleusercontent.com",
             "microsoft.com", "windows.com", "azure.com", "apple.com", "icloud.com",
@@ -34,8 +37,8 @@ class DNSThreatDetector:
     def _default_config() -> dict[str, Any]:
         return {"dns_tunnel_threshold": 20, "dga_entropy_threshold": 3.5}
 
-    def run(self, df: pd.DataFrame, context: Optional[dict] = None,
-            threat_domains: Optional[set[str]] = None) -> list[DetectionResult]:
+    def run(self, df: pd.DataFrame, context: dict | None = None,
+            threat_domains: set[str] | None = None) -> list[DetectionResult]:
         """运行 DNS 威胁检测"""
         if context and "safe_domains" in context:
             self.safe_domains = context["safe_domains"]
@@ -47,7 +50,7 @@ class DNSThreatDetector:
         results.extend(self._detect_dga_domains(df))
         return results
 
-    def _detect_threat_domains(self, df: pd.DataFrame, threat_domains: Optional[set[str]] = None) -> list[DetectionResult]:
+    def _detect_threat_domains(self, df: pd.DataFrame, threat_domains: set[str] | None = None) -> list[DetectionResult]:
         """检测访问黑名单域名"""
         results = []
         if not threat_domains or "requested_server_name" not in df.columns:

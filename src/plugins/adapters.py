@@ -7,8 +7,7 @@
 
 from __future__ import annotations
 
-import time
-from typing import Any, Optional
+from typing import Any
 
 import pandas as pd
 
@@ -45,7 +44,7 @@ class DNSPluginAdapter(BaseDetectionPlugin):
     def run(
         self,
         df: pd.DataFrame,
-        context: Optional[dict[str, Any]] = None
+        context: dict[str, Any] | None = None
     ) -> list[DetectionResult]:
         context = context or {}
         threat_domains = context.get("threat_domains", set())
@@ -83,7 +82,7 @@ class HTTPPluginAdapter(BaseDetectionPlugin):
     def run(
         self,
         df: pd.DataFrame,
-        context: Optional[dict[str, Any]] = None
+        context: dict[str, Any] | None = None
     ) -> list[DetectionResult]:
         context = context or {}
         threat_urls = context.get("threat_urls", set())
@@ -117,7 +116,7 @@ class CovertPluginAdapter(BaseDetectionPlugin):
     def run(
         self,
         df: pd.DataFrame,
-        context: Optional[dict[str, Any]] = None
+        context: dict[str, Any] | None = None
     ) -> list[DetectionResult]:
         return self._detector.run(df, context)
 
@@ -148,7 +147,7 @@ class BehaviorPluginAdapter(BaseDetectionPlugin):
     def run(
         self,
         df: pd.DataFrame,
-        context: Optional[dict[str, Any]] = None
+        context: dict[str, Any] | None = None
     ) -> list[DetectionResult]:
         return self._detector.run(df, context)
 
@@ -165,7 +164,7 @@ ADAPTERS = {
 }
 
 
-def create_adapter(engine_type: str, detector=None) -> Optional[BaseDetectionPlugin]:
+def create_adapter(engine_type: str, detector=None) -> BaseDetectionPlugin | None:
     """
     创建检测引擎的插件适配器。
 

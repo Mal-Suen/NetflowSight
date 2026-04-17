@@ -16,16 +16,16 @@
 - 安全域名：本次查询未发现异常，但有有效期（30 天），过期后需重新查询
 """
 
-import logging
 import json
+import logging
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Optional
-from datetime import datetime, timedelta
 
 import pandas as pd
 
-from intel.threatbook import ThreatBookClient
 from core.interfaces import DetectionResult, Severity, ThreatType
+from intel.threatbook import ThreatBookClient
 from ml.domain_classifier import DomainClassifier
 
 logger = logging.getLogger(__name__)
@@ -93,7 +93,7 @@ class SmartThreatDetector:
         """加载白名单文件（永久有效）"""
         if self._whitelist_file.exists():
             try:
-                with open(self._whitelist_file, "r", encoding="utf-8") as f:
+                with open(self._whitelist_file, encoding="utf-8") as f:
                     self._whitelist = json.load(f)
                 logger.info(f"加载白名单: {len(self._whitelist)} 个域名")
             except Exception as e:
@@ -117,7 +117,7 @@ class SmartThreatDetector:
         """加载安全域名缓存（有过期机制）"""
         if self._safe_cache_file.exists():
             try:
-                with open(self._safe_cache_file, "r", encoding="utf-8") as f:
+                with open(self._safe_cache_file, encoding="utf-8") as f:
                     cache_data = json.load(f)
 
                 # 清理过期缓存（超过 30 天）

@@ -1,8 +1,9 @@
 """Tests for ML anomaly classifier"""
 
+import numpy as np
 import pandas as pd
 import pytest
-import numpy as np
+
 from ml.classifier import MLAnomalyClassifier
 
 

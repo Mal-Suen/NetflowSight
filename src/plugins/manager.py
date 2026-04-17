@@ -18,16 +18,16 @@ import time
 import traceback
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Optional, Type
+from typing import Any
 
 import pandas as pd
 
 from .base import (
     BaseDetectionPlugin,
     DetectionResult,
-    PluginMetadata,
     PluginError,
     PluginLoadError,
+    PluginMetadata,
 )
 
 logger = logging.getLogger(__name__)
@@ -38,7 +38,7 @@ class PluginInfo:
     """插件注册信息"""
     plugin: BaseDetectionPlugin
     metadata: PluginMetadata
-    module_path: Optional[str] = None
+    module_path: str | None = None
     loaded_at: str = field(default_factory=lambda: time.strftime("%Y-%m-%d %H:%M:%S"))
     enabled: bool = True
 
@@ -63,7 +63,7 @@ class PluginManager:
         dns_plugin = manager.get_plugin("dns_detector")
     """
 
-    def __init__(self, config: Optional[dict[str, Any]] = None):
+    def __init__(self, config: dict[str, Any] | None = None):
         self._plugins: dict[str, PluginInfo] = {}
         self._config = config or {}
         self._execution_order: list[str] = []
@@ -96,7 +96,7 @@ class PluginManager:
             if not plugin.initialize():
                 raise PluginLoadError(f"插件 {name} 初始化失败")
         except Exception as e:
-            raise PluginLoadError(f"插件 {name} 初始化异常: {e}")
+            raise PluginLoadError(f"插件 {name} 初始化异常: {e}") from e
 
         # 注册插件
         self._plugins[name] = PluginInfo(
@@ -140,6 +140,7 @@ class PluginManager:
         # DNS 检测插件
         try:
             from engines.dns import DNSThreatDetector
+
             from .adapters import DNSPluginAdapter
             detector = DNSThreatDetector()
             plugin = DNSPluginAdapter(detector)
@@ -151,6 +152,7 @@ class PluginManager:
         # HTTP 检测插件
         try:
             from engines.http import HTTPThreatDetector
+
             from .adapters import HTTPPluginAdapter
             detector = HTTPThreatDetector()
             plugin = HTTPPluginAdapter(detector)
@@ -162,6 +164,7 @@ class PluginManager:
         # 隐蔽通道检测插件
         try:
             from engines.covert import CovertChannelDetector
+
             from .adapters import CovertPluginAdapter
             detector = CovertChannelDetector()
             plugin = CovertPluginAdapter(detector)
@@ -173,6 +176,7 @@ class PluginManager:
         # 行为异常检测插件
         try:
             from engines.behavior import BehavioralAnomalyDetector
+
             from .adapters import BehaviorPluginAdapter
             detector = BehavioralAnomalyDetector()
             plugin = BehaviorPluginAdapter(detector)
@@ -215,7 +219,7 @@ class PluginManager:
         logger.info(f"加载外部插件: {len(loaded)} 个")
         return loaded
 
-    def load_plugin_from_module(self, module_name: str) -> Optional[str]:
+    def load_plugin_from_module(self, module_name: str) -> str | None:
         """
         从 Python 模块加载插件。
 
@@ -239,7 +243,7 @@ class PluginManager:
             logger.error(f"加载模块 {module_name} 失败: {e}")
             return None
 
-    def _load_plugin_from_file(self, file_path: Path) -> Optional[BaseDetectionPlugin]:
+    def _load_plugin_from_file(self, file_path: Path) -> BaseDetectionPlugin | None:
         """从文件加载插件"""
         spec = importlib.util.spec_from_file_location(file_path.stem, file_path)
         if not spec or not spec.loader:
@@ -259,7 +263,7 @@ class PluginManager:
     def run_all(
         self,
         df: pd.DataFrame,
-        context: Optional[dict[str, Any]] = None
+        context: dict[str, Any] | None = None
     ) -> list[DetectionResult]:
         """
         执行所有已启用的插件。
@@ -292,7 +296,7 @@ class PluginManager:
         self,
         name: str,
         df: pd.DataFrame,
-        context: Optional[dict[str, Any]] = None
+        context: dict[str, Any] | None = None
     ) -> list[DetectionResult]:
         """
         执行单个插件。
@@ -327,12 +331,12 @@ class PluginManager:
     # 插件管理
     # ==========================================
 
-    def get_plugin(self, name: str) -> Optional[BaseDetectionPlugin]:
+    def get_plugin(self, name: str) -> BaseDetectionPlugin | None:
         """获取插件实例"""
         info = self._plugins.get(name)
         return info.plugin if info else None
 
-    def get_plugin_info(self, name: str) -> Optional[PluginInfo]:
+    def get_plugin_info(self, name: str) -> PluginInfo | None:
         """获取插件信息"""
         return self._plugins.get(name)
 

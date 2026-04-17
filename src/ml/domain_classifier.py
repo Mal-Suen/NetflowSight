@@ -6,12 +6,9 @@ import logging
 import math
 import re
 from pathlib import Path
-from typing import Any, Optional
 
 import joblib
-import numpy as np
 import pandas as pd
-import lightgbm as lgb
 
 logger = logging.getLogger(__name__)
 
@@ -102,7 +99,7 @@ FEATURE_NAMES = [
 class DomainClassifier:
     """基于 ML 的域名分类器，检测钓鱼和恶意域名"""
 
-    def __init__(self, model_path: Optional[str] = None):
+    def __init__(self, model_path: str | None = None):
         self._model = None
         self._is_loaded = False
 

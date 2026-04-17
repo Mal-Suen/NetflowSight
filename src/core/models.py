@@ -1,8 +1,8 @@
 """数据模型定义模块"""
 
 from dataclasses import dataclass, field
-from typing import Any, Optional
 from enum import Enum
+from typing import Any, Optional
 
 
 class Severity(str, Enum):
@@ -80,6 +80,19 @@ class ThreatFinding:
     recommendation: str = ""
     affected_ips: list = field(default_factory=list)
     flow_count: int = 0
+
+
+@dataclass
+class ThreatAlert:
+    """威胁告警结果（插件检测输出）"""
+    threat_type: ThreatType
+    severity: Severity
+    description: str
+    evidence: dict = field(default_factory=dict)
+    confidence: float = 0.0
+    ioc: list = field(default_factory=list)
+    mitre_technique: str = ""
+    recommended_action: str = ""
 
 
 @dataclass

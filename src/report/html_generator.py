@@ -8,7 +8,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Optional
 
-from core.models import AnalysisResult, Severity
+from core.models import AnalysisResult
 
 logger = logging.getLogger(__name__)
 
@@ -21,7 +21,7 @@ class HTMLReportGenerator:
 
     def generate(self, output_path: Optional[str] = None, api_stats: Optional[dict] = None) -> str:
         """生成完整 HTML 报告
-        
+
         Args:
             output_path: 输出文件路径
             api_stats: API 使用统计 {'abuseipdb': {...}, 'threatbook': {...}}
@@ -190,8 +190,8 @@ class HTMLReportGenerator:
         <div class="header">
             <h1>🔍 NetflowSight 分析报告</h1>
             <div class="meta">
-                生成时间: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')} | 
-                PCAP 文件: {self.result.pcap_file} | 
+                生成时间: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')} |
+                PCAP 文件: {self.result.pcap_file} |
                 处理耗时: {self.result.processing_time_ms:.0f} ms
             </div>
         </div>

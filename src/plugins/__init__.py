@@ -17,22 +17,23 @@
     results = manager.run_all(df, context)
 """
 
-from .base import (
-    BaseDetectionPlugin,
-    DetectionResult,
-    PluginMetadata,
-    PluginError,
-    PluginLoadError,
-    PluginConfigError,
-)
-from .manager import PluginManager, PluginInfo
+from core.interfaces import DetectionResult
+
 from .adapters import (
+    BehaviorPluginAdapter,
+    CovertPluginAdapter,
     DNSPluginAdapter,
     HTTPPluginAdapter,
-    CovertPluginAdapter,
-    BehaviorPluginAdapter,
     create_adapter,
 )
+from .base import (
+    BaseDetectionPlugin,
+    PluginConfigError,
+    PluginError,
+    PluginLoadError,
+    PluginMetadata,
+)
+from .manager import PluginInfo, PluginManager
 
 __all__ = [
     # 基类

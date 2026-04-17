@@ -1,7 +1,6 @@
 """Tests for ML-based domain classifier"""
 
-import pytest
-from engines.domain_classifier import extract_domain_features, DomainClassifier, FEATURE_NAMES
+from ml.domain_classifier import FEATURE_NAMES, DomainClassifier, extract_domain_features
 
 
 class TestExtractDomainFeatures:
@@ -58,4 +57,4 @@ class TestDomainClassifierIntegration:
             "hyphen_count", "has_digit", "max_consecutive", "special_char_ratio",
             "transition_ratio", "vowel_ratio", "is_ip",
         ]
-        assert FEATURE_NAMES == expected
+        assert expected == FEATURE_NAMES

@@ -1,10 +1,12 @@
 """Tests for AbuseIPDB smart detector"""
 
+from unittest.mock import patch
+
 import pandas as pd
 import pytest
-from unittest.mock import patch
-from engines.abuseipdb_detector import AbuseIPDBSmartDetector
+
 from core.models import IPReputation
+from intel.abuseipdb_detector import AbuseIPDBSmartDetector
 
 
 @pytest.fixture

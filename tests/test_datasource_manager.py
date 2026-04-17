@@ -2,9 +2,10 @@
 
 import json
 from pathlib import Path
+
 import pytest
-from datasource.manager import DataSourceManager, DataSource, DataSourceType, DataSourceCategory
-from datasource.strategy import UpdateStrategy
+
+from datasource.manager import DataSource, DataSourceCategory, DataSourceManager, DataSourceType
 
 
 @pytest.fixture
@@ -92,7 +93,6 @@ class TestDataSourceGetItems:
 
     def test_get_items_returns_copy(self, manager):
         domains = manager.get_items(DataSourceCategory.WHITELIST_DOMAINS)
-        original_len = len(domains)
         domains.add("evil.com")
         domains2 = manager.get_items(DataSourceCategory.WHITELIST_DOMAINS)
         assert "evil.com" not in domains2

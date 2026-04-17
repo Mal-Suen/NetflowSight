@@ -1,17 +1,17 @@
 """AbuseIPDB 智能威胁检测模块 - 三层缓存策略优化 API 调用"""
 
-import logging
-import json
 import ipaddress
+import json
+import logging
+from datetime import datetime
 from pathlib import Path
 from typing import Optional
-from datetime import datetime, timedelta
 
 import pandas as pd
 
-from intel.client import ThreatIntelligenceClient
-from core.models import Severity, ThreatType
 from core.interfaces import DetectionResult
+from core.models import Severity, ThreatType
+from intel.client import ThreatIntelligenceClient
 
 logger = logging.getLogger(__name__)
 
@@ -56,7 +56,7 @@ class AbuseIPDBSmartDetector:
         """加载白名单"""
         if self._whitelist_file.exists():
             try:
-                with open(self._whitelist_file, "r", encoding="utf-8") as f:
+                with open(self._whitelist_file, encoding="utf-8") as f:
                     self._whitelist = json.load(f)
                 logger.info(f"加载 AbuseIPDB 白名单: {len(self._whitelist)} 个 IP")
             except Exception as e:
@@ -76,7 +76,7 @@ class AbuseIPDBSmartDetector:
         """加载安全缓存（自动清理过期）"""
         if self._safe_cache_file.exists():
             try:
-                with open(self._safe_cache_file, "r", encoding="utf-8") as f:
+                with open(self._safe_cache_file, encoding="utf-8") as f:
                     cache_data = json.load(f)
                 now = datetime.now()
                 valid_cache = {}
@@ -103,7 +103,7 @@ class AbuseIPDBSmartDetector:
         """加载恶意缓存（90天过期）"""
         if self._malicious_cache_file.exists():
             try:
-                with open(self._malicious_cache_file, "r", encoding="utf-8") as f:
+                with open(self._malicious_cache_file, encoding="utf-8") as f:
                     cache_data = json.load(f)
                 now = datetime.now()
                 valid_cache = {}

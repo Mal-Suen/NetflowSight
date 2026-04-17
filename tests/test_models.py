@@ -1,7 +1,6 @@
 """Tests for core data models"""
 
-import pytest
-from core.models import Severity, ThreatType, IPReputation, ThreatFinding, AnalysisResult
+from core.models import AnalysisResult, IPReputation, Severity, ThreatFinding, ThreatType
 
 
 class TestSeverity:

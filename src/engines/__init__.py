@@ -2,10 +2,10 @@
 Threat detection engines
 """
 
+from .behavior import BehavioralAnomalyDetector
+from .covert import CovertChannelDetector
 from .dns import DNSThreatDetector
 from .http import HTTPThreatDetector
-from .covert import CovertChannelDetector
-from .behavior import BehavioralAnomalyDetector
 
 __all__ = [
     "DNSThreatDetector",

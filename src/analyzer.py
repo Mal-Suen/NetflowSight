@@ -8,16 +8,16 @@ from typing import Optional
 
 import pandas as pd
 
-from core.parser import FlowStreamAnalyzer
 from core.config import settings
 from core.models import AnalysisResult, Severity
-from datasource.manager import DataSourceManager, DataSourceCategory
-from intel.smart_threat import SmartThreatDetector
+from core.parser import FlowStreamAnalyzer
+from datasource.manager import DataSourceCategory, DataSourceManager
 from intel.abuseipdb_detector import AbuseIPDBSmartDetector
 from intel.cache import ThreatCache
+from intel.smart_threat import SmartThreatDetector
 from ml.classifier import MLAnomalyClassifier
-from report.generator import ReportGenerator
 from plugins import PluginManager
+from report.generator import ReportGenerator
 
 logger = logging.getLogger(__name__)
 
@@ -188,7 +188,7 @@ class NetflowSightAnalyzer:
         for r in results:
             if isinstance(r, DetectionResult):
                 # 转换为 core.models 的 ThreatAlert 格式
-                from core.models import ThreatAlert, ThreatType, Severity
+                from core.models import Severity, ThreatAlert, ThreatType
                 threat = ThreatAlert(
                     threat_type=ThreatType(r.threat_type.value),
                     severity=Severity(r.severity.value),
