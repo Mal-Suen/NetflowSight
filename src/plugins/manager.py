@@ -244,7 +244,40 @@ class PluginManager:
             return None
 
     def _load_plugin_from_file(self, file_path: Path) -> BaseDetectionPlugin | None:
-        """从文件加载插件"""
+        """从文件加载插件（带安全检查）"""
+        # 安全检查：确保文件路径在允许的目录内
+        resolved_path = file_path.resolve()
+        
+        # 定义允许的插件目录
+        allowed_dirs = [
+            Path("plugins/external").resolve(),
+            Path("src/plugins/external").resolve(),
+        ]
+        
+        # 添加项目根目录下的插件目录
+        project_root = Path(__file__).parent.parent.parent.resolve()
+        allowed_dirs.append(project_root / "plugins" / "external")
+        
+        # 检查路径是否在允许的目录内
+        is_allowed = False
+        for allowed_dir in allowed_dirs:
+            try:
+                if allowed_dir.exists():
+                    resolved_path.relative_to(allowed_dir)
+                    is_allowed = True
+                    break
+            except ValueError:
+                continue
+        
+        if not is_allowed:
+            logger.warning(f"安全警告: 拒绝加载不在允许目录内的插件: {file_path}")
+            return None
+        
+        # 检查文件扩展名
+        if file_path.suffix != ".py":
+            logger.warning(f"安全警告: 拒绝加载非 Python 文件: {file_path}")
+            return None
+        
         spec = importlib.util.spec_from_file_location(file_path.stem, file_path)
         if not spec or not spec.loader:
             return None

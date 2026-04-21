@@ -22,8 +22,10 @@ import csv
 import gzip
 import hashlib
 import io
+import ipaddress
 import json
 import logging
+import re
 import time
 import zipfile
 from dataclasses import dataclass, field
@@ -32,11 +34,84 @@ from enum import Enum
 from pathlib import Path
 from typing import Any
 from urllib.error import HTTPError
+from urllib.parse import urlparse
 from urllib.request import Request, urlopen
 
 from .strategy import StrategyRecommender, UpdateStrategy
 
 logger = logging.getLogger(__name__)
+
+
+# SSRF 防护：允许的域名白名单
+ALLOWED_DOMAINS = {
+    # 威胁情报源
+    "raw.githubusercontent.com",
+    "rules.emergingthreats.net",
+    "snort.org",
+    "www.snort.org",
+    "abuse.ch",
+    "urlhaus.abuse.ch",
+    "threatfox.abuse.ch",
+    "sslbl.abuse.ch",
+    "feodotracker.abuse.ch",
+    "pulsedive.com",
+    "www.pulsedive.com",
+    "otx.alienvault.com",
+    "api.abuseipdb.com",
+    "api.threatbook.cn",
+}
+
+# 禁止访问的私有 IP 范围
+PRIVATE_IP_RANGES = [
+    ipaddress.ip_network('10.0.0.0/8'),
+    ipaddress.ip_network('172.16.0.0/12'),
+    ipaddress.ip_network('192.168.0.0/16'),
+    ipaddress.ip_network('127.0.0.0/8'),
+    ipaddress.ip_network('169.254.0.0/16'),
+    ipaddress.ip_network('::1/128'),
+    ipaddress.ip_network('fc00::/7'),
+    ipaddress.ip_network('fe80::/10'),
+]
+
+
+def is_safe_url(url: str) -> tuple[bool, str]:
+    """
+    验证 URL 是否安全（SSRF 防护）。
+    
+    Returns:
+        (is_safe, error_message)
+    """
+    try:
+        parsed = urlparse(url)
+        
+        # 检查协议
+        if parsed.scheme not in ('http', 'https'):
+            return False, f"不允许的协议: {parsed.scheme}"
+        
+        # 检查域名
+        hostname = parsed.hostname
+        if not hostname:
+            return False, "URL 缺少主机名"
+        
+        # 检查是否在白名单中
+        if hostname not in ALLOWED_DOMAINS:
+            return False, f"域名不在白名单中: {hostname}"
+        
+        # 检查是否是 IP 地址
+        try:
+            ip = ipaddress.ip_address(hostname)
+            # 检查是否是私有 IP
+            for private_range in PRIVATE_IP_RANGES:
+                if ip in private_range:
+                    return False, f"禁止访问私有 IP: {hostname}"
+        except ValueError:
+            # 不是 IP 地址，是域名，已经过白名单检查
+            pass
+        
+        return True, ""
+        
+    except Exception as e:
+        return False, f"URL 解析失败: {e}"
 
 
 class DataSourceType(str, Enum):
@@ -693,6 +768,12 @@ class DataSourceManager:
         Download remote file and automatically handle gzip/zip decompression.
         Returns: (content_str, etag) or (None, etag) if 304 Not Modified.
         """
+        # SSRF 防护：验证 URL 安全性
+        is_safe, error_msg = is_safe_url(url)
+        if not is_safe:
+            logger.warning(f"SSRF 防护: 拒绝访问不安全的 URL: {url} - {error_msg}")
+            raise ValueError(f"不安全的 URL: {error_msg}")
+        
         req = Request(url)
         req.add_header("User-Agent", "NetflowSight/1.0.0 (Threat Intel)")
         req.add_header("Accept-Encoding", "gzip, deflate")

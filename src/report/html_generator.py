@@ -2,6 +2,7 @@
 HTML Report Generator - 生成可视化 HTML 分析报告
 """
 
+import html
 import json
 import logging
 from datetime import datetime
@@ -333,7 +334,7 @@ class HTMLReportGenerator:
         return '<div class="stats-grid">' + '\n'.join(cards) + '</div>'
 
     def _render_threat_list(self, threats: list) -> str:
-        """渲染威胁列表 HTML"""
+        """渲染威胁列表 HTML（带 XSS 防护）"""
         items = []
         for i, t in enumerate(threats, 1):
             sev = t.severity.value.lower()
@@ -345,19 +346,21 @@ class HTMLReportGenerator:
             detail_rows = ""
             if evidence:
                 for k, v in evidence.items():
-                    val = str(v)
+                    val = html.escape(str(v))
                     if isinstance(v, list):
-                        val = ', '.join(str(x) for x in v[:10])
-                    detail_rows += f'<div class="detail-row"><span class="detail-label">{k}:</span><span class="detail-value">{val}</span></div>'
+                        val = html.escape(', '.join(str(x) for x in v[:10]))
+                    detail_rows += f'<div class="detail-row"><span class="detail-label">{html.escape(str(k))}:</span><span class="detail-value">{val}</span></div>'
             if iocs:
-                detail_rows += f'<div class="detail-row"><span class="detail-label">IOC:</span><span class="detail-value">{", ".join(str(x) for x in iocs)}</span></div>'
+                detail_rows += f'<div class="detail-row"><span class="detail-label">IOC:</span><span class="detail-value">{html.escape(", ".join(str(x) for x in iocs))}</span></div>'
             if rec:
-                detail_rows += f'<div class="detail-row"><span class="detail-label">建议:</span><span class="detail-value">{rec}</span></div>'
+                detail_rows += f'<div class="detail-row"><span class="detail-label">建议:</span><span class="detail-value">{html.escape(str(rec))}</span></div>'
+            # 对描述进行 HTML 转义防止 XSS
+            safe_description = html.escape(t.description)
             items.append(f"""
             <li class="threat-item {sev}">
                 <div class="threat-header">
                     <span class="threat-num">{i}</span>
-                    <span class="threat-title">{t.description}</span>
+                    <span class="threat-title">{safe_description}</span>
                     <span class="threat-badge {badge_class}">{sev_label}</span>
                     <span class="threat-arrow">▼</span>
                 </div>

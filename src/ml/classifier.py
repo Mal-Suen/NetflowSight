@@ -132,12 +132,33 @@ class MLAnomalyClassifier:
         logger.info(f"模型已保存到 {path}")
 
     def load_model(self, path: str) -> None:
-        """从磁盘加载模型"""
+        """从磁盘加载模型（带完整性校验）"""
         if not Path(path).exists():
             raise FileNotFoundError(f"模型文件不存在: {path}")
 
+        # 安全检查：确保路径在预期的模型目录内
+        model_path = Path(path).resolve()
+        expected_dir = Path(self.model_path).parent.resolve() if self.model_path else Path("models").resolve()
+        
+        try:
+            # 检查是否在预期目录内（防止路径遍历攻击）
+            model_path.relative_to(expected_dir)
+        except ValueError:
+            # 如果不在预期目录，检查是否在项目目录内
+            project_dir = Path(__file__).parent.parent.parent.resolve()
+            try:
+                model_path.relative_to(project_dir)
+            except ValueError:
+                raise RuntimeError(f"安全错误: 模型路径不在允许的目录内: {path}")
+
         try:
             model_data = joblib.load(path)
+            
+            # 验证模型数据结构
+            required_keys = {"model", "scaler", "features"}
+            if not isinstance(model_data, dict) or not required_keys.issubset(model_data.keys()):
+                raise RuntimeError("模型文件格式无效: 缺少必要的键")
+            
             self.model = model_data["model"]
             self.scaler = model_data["scaler"]
             self._is_fitted = True

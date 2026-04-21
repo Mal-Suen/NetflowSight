@@ -1,6 +1,7 @@
 """命令行界面模块"""
 
 import logging
+import os
 import warnings
 from datetime import datetime
 from pathlib import Path
@@ -16,6 +17,70 @@ from analyzer import NetflowSightAnalyzer  # noqa: E402
 from core.config import settings  # noqa: E402
 
 console = Console()
+
+# 允许的输入文件扩展名
+ALLOWED_INPUT_EXTENSIONS = {'.pcap', '.pcapng', '.cap'}
+# 最大文件大小限制 (500MB)
+MAX_FILE_SIZE = 500 * 1024 * 1024
+
+
+def validate_input_file(pcap_file: str) -> str:
+    """验证输入文件是否安全"""
+    path = Path(pcap_file)
+    
+    # 检查文件扩展名
+    if path.suffix.lower() not in ALLOWED_INPUT_EXTENSIONS:
+        raise click.BadParameter(
+            f"不支持的文件类型: {path.suffix}。允许的扩展名: {', '.join(ALLOWED_INPUT_EXTENSIONS)}"
+        )
+    
+    # 检查文件大小
+    file_size = path.stat().st_size
+    if file_size > MAX_FILE_SIZE:
+        raise click.BadParameter(
+            f"文件过大: {file_size / 1024 / 1024:.1f}MB。最大允许: {MAX_FILE_SIZE / 1024 / 1024}MB"
+        )
+    
+    # 检查是否是符号链接（防止符号链接攻击）
+    if path.is_symlink():
+        # 解析真实路径并确保在允许的目录内
+        real_path = path.resolve()
+        try:
+            # 确保解析后的路径仍然在用户可访问的目录内
+            real_path.relative_to(Path.cwd())
+        except ValueError:
+            # 不在当前工作目录，检查是否在用户目录内
+            user_dirs = [Path.home(), Path.cwd()]
+            in_allowed_dir = any(
+                str(real_path).startswith(str(d)) for d in user_dirs
+            )
+            if not in_allowed_dir:
+                raise click.BadParameter(
+                    f"安全警告: 符号链接指向不允许的目录"
+                )
+    
+    return pcap_file
+
+
+def validate_output_path(output: str) -> str:
+    """验证输出路径是否安全"""
+    if not output:
+        return output
+    
+    path = Path(output).resolve()
+    
+    # 检查输出路径是否在当前工作目录或用户目录内
+    allowed_dirs = [Path.cwd(), Path.home()]
+    in_allowed_dir = any(
+        str(path).startswith(str(d)) for d in allowed_dirs
+    )
+    
+    if not in_allowed_dir:
+        raise click.BadParameter(
+            f"安全警告: 输出路径必须在当前工作目录或用户目录内"
+        )
+    
+    return output
 
 
 def setup_logging(log_level: str = "INFO", log_file: str = None):
@@ -48,6 +113,15 @@ def cli():
 @click.option("--verbose", "-v", is_flag=True, help="启用详细输出")
 def analyze(pcap_file, output, format, no_ml, no_threat_intel, verbose):
     """分析 PCAP 文件并生成报告"""
+    # 输入验证
+    try:
+        validate_input_file(pcap_file)
+        if output:
+            validate_output_path(output)
+    except click.BadParameter as e:
+        console.print(f"❌ {e}", style="red")
+        raise
+    
     setup_logging(
         log_level="WARNING" if not verbose else "DEBUG",
         log_file=settings.LOG_FILE,
