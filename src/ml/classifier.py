@@ -131,8 +131,8 @@ class MLAnomalyClassifier:
         joblib.dump(model_data, path)
         logger.info(f"模型已保存到 {path}")
 
-    def load_model(self, path: str) -> None:
-        """从磁盘加载模型（带完整性校验）"""
+    def load_model(self, path: str, expected_hash: str | None = None) -> None:
+        """从磁盘加载模型（带完整性校验和安全验证）"""
         if not Path(path).exists():
             raise FileNotFoundError(f"模型文件不存在: {path}")
 
@@ -151,17 +151,18 @@ class MLAnomalyClassifier:
             except ValueError:
                 raise RuntimeError(f"安全错误: 模型路径不在允许的目录内: {path}")
 
+        # 使用安全加载器
         try:
-            model_data = joblib.load(path)
-            
-            # 验证模型数据结构
-            required_keys = {"model", "scaler", "features"}
-            if not isinstance(model_data, dict) or not required_keys.issubset(model_data.keys()):
-                raise RuntimeError("模型文件格式无效: 缺少必要的键")
+            from ml.safe_loader import safe_load_model
+            model_data = safe_load_model(
+                path,
+                expected_hash=expected_hash,
+                strict_validation=False,  # 兼容现有模型
+            )
             
             self.model = model_data["model"]
-            self.scaler = model_data["scaler"]
+            self.scaler = model_data.get("scaler", self.scaler)
             self._is_fitted = True
-            logger.info(f"模型已从 {path} 加载")
+            logger.info(f"模型已从 {path} 安全加载")
         except Exception as e:
             raise RuntimeError(f"加载模型失败: {e}") from e

@@ -553,7 +553,12 @@ class DataSourceManager:
         """
         Interactively ask user if they want to update data sources.
         Shows which sources need update based on update_interval_hours.
+        
+        Includes timeout to prevent indefinite blocking.
         """
+        # 默认超时时间（秒）
+        INPUT_TIMEOUT_SECONDS = 30
+        
         try:
             now = datetime.now()
             remote_sources = [
@@ -597,12 +602,15 @@ class DataSourceManager:
                     interval = f"{s.update_interval_hours}h" if s.update_interval_hours > 0 else "手动"
                     print(f"  • {s.name}: {time_info} (间隔: {interval})")
                 print()
-                print("是否更新? [Y/n]: ", end="", flush=True)
+                print(f"是否更新? [Y/n] ({INPUT_TIMEOUT_SECONDS}s 超时默认 Y): ", end="", flush=True)
+                default_choice = "y"  # 有更新需要时默认更新
             else:
                 print("✅ 所有数据源都在更新间隔内")
-                print("是否强制更新所有数据源? [y/N]: ", end="", flush=True)
+                print(f"是否强制更新所有数据源? [y/N] ({INPUT_TIMEOUT_SECONDS}s 超时默认 N): ", end="", flush=True)
+                default_choice = "n"  # 无需更新时默认跳过
 
-            choice = input().strip().lower()
+            # 使用 select 实现超时（仅 Unix）或回退到线程
+            choice = self._timed_input(INPUT_TIMEOUT_SECONDS, default_choice)
 
             if choice in ("", "y", "yes") and sources_needing_update:
                 print("\n🔄 正在更新数据源...")
@@ -626,6 +634,55 @@ class DataSourceManager:
             logger.info("Non-interactive mode: skipping update check")
         except Exception as e:
             logger.warning(f"Interactive update failed: {e}")
+
+    def _timed_input(self, timeout_seconds: int, default: str) -> str:
+        """
+        带超时的输入函数
+        
+        Args:
+            timeout_seconds: 超时秒数
+            default: 超时后的默认返回值
+        
+        Returns:
+            用户输入或默认值
+        """
+        import select
+        import sys
+        import threading
+        
+        # 尝试使用 select (仅 Unix 系统支持 stdin)
+        try:
+            # 检查是否是 TTY
+            if sys.stdin.isatty():
+                if select.select([sys.stdin], [], [], timeout_seconds)[0]:
+                    return sys.stdin.readline().strip().lower()
+                else:
+                    print(f"\n⏱️ 超时，使用默认值: {default.upper()}")
+                    return default
+        except (OSError, AttributeError):
+            # Windows 或非 TTY 环境，使用线程方式
+            pass
+        
+        # 回退方案：使用线程
+        result = [default]
+        result_ready = threading.Event()
+        
+        def get_input():
+            try:
+                result[0] = input().strip().lower()
+            except (EOFError, KeyboardInterrupt):
+                pass
+            finally:
+                result_ready.set()
+        
+        input_thread = threading.Thread(target=get_input, daemon=True)
+        input_thread.start()
+        
+        if result_ready.wait(timeout_seconds):
+            return result[0]
+        else:
+            print(f"\n⏱️ 超时，使用默认值: {default.upper()}")
+            return default
 
     def update_all(self, force: bool = False) -> dict[str, bool]:
         """

@@ -110,13 +110,18 @@ class DomainClassifier:
         self._model_path = model_path
         self._load_model()
 
-    def _load_model(self) -> None:
-        """加载预训练模型"""
+    def _load_model(self, expected_hash: str | None = None) -> None:
+        """加载预训练模型（带安全验证）"""
         try:
-            model_data = joblib.load(self._model_path)
+            from ml.safe_loader import safe_load_model
+            model_data = safe_load_model(
+                self._model_path,
+                expected_hash=expected_hash,
+                strict_validation=False,  # 兼容现有模型
+            )
             self._model = model_data["model"]
             self._is_loaded = True
-            logger.info(f"域名分类器已加载 (AUC: {model_data.get('auc', 'unknown')})")
+            logger.info(f"域名分类器已安全加载 (AUC: {model_data.get('auc', 'unknown')})")
         except FileNotFoundError:
             logger.warning(f"域名分类器模型未找到: {self._model_path}，将使用规则检测")
             self._is_loaded = False

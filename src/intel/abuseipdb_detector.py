@@ -1,7 +1,6 @@
 """AbuseIPDB 智能威胁检测模块 - 三层缓存策略优化 API 调用"""
 
 import ipaddress
-import json
 import logging
 from datetime import datetime
 from pathlib import Path
@@ -12,6 +11,7 @@ import pandas as pd
 from core.interfaces import DetectionResult
 from core.models import Severity, ThreatType
 from intel.client import ThreatIntelligenceClient
+from utils.cache_manager import CacheLevel, GenericCacheManager
 
 logger = logging.getLogger(__name__)
 
@@ -32,99 +32,46 @@ class AbuseIPDBSmartDetector:
         "Akamai Technologies", "Fastly", "DigitalOcean, LLC",
     }
 
-    def __init__(self, whitelist_file: Optional[str] = None,
-                 safe_cache_file: Optional[str] = None,
-                 malicious_cache_file: Optional[str] = None):
+    def __init__(self, cache_dir: Optional[str] = None):
         self.client = ThreatIntelligenceClient()
         self._query_count = 0
         self._cache_hits = 0
 
-        self._whitelist: dict[str, dict] = {}
-        self._safe_cache: dict[str, dict] = {}
-        self._malicious_cache: dict[str, dict] = {}
-
+        # 使用通用缓存管理器
         project_root = Path(__file__).resolve().parent.parent.parent
-        self._whitelist_file = Path(whitelist_file) if whitelist_file else project_root / "data" / "sources" / "abuseipdb_whitelist.json"
-        self._safe_cache_file = Path(safe_cache_file) if safe_cache_file else project_root / "data" / "sources" / "abuseipdb_safe_cache.json"
-        self._malicious_cache_file = Path(malicious_cache_file) if malicious_cache_file else project_root / "data" / "sources" / "abuseipdb_malicious_cache.json"
+        cache_path = Path(cache_dir) if cache_dir else project_root / "data" / "cache"
+        
+        self._cache = GenericCacheManager(
+            cache_name="abuseipdb",
+            cache_dir=cache_path,
+            ttl_days={
+                CacheLevel.WHITELIST: None,  # 永久
+                CacheLevel.SAFE: 30,
+                CacheLevel.MALICIOUS: 90,
+            },
+        )
 
-        self._load_whitelist()
-        self._load_safe_cache()
-        self._load_malicious_cache()
-
-    def _load_whitelist(self):
-        """加载白名单"""
-        if self._whitelist_file.exists():
-            try:
-                with open(self._whitelist_file, encoding="utf-8") as f:
-                    self._whitelist = json.load(f)
-                logger.info(f"加载 AbuseIPDB 白名单: {len(self._whitelist)} 个 IP")
-            except Exception as e:
-                logger.warning(f"加载白名单失败: {e}")
-
-    def _save_whitelist(self):
-        if not self._whitelist:
-            return
-        try:
-            self._whitelist_file.parent.mkdir(parents=True, exist_ok=True)
-            with open(self._whitelist_file, "w", encoding="utf-8") as f:
-                json.dump(self._whitelist, f, indent=2, ensure_ascii=False)
-        except Exception as e:
-            logger.warning(f"保存白名单失败: {e}")
-
-    def _load_safe_cache(self):
-        """加载安全缓存（自动清理过期）"""
-        if self._safe_cache_file.exists():
-            try:
-                with open(self._safe_cache_file, encoding="utf-8") as f:
-                    cache_data = json.load(f)
-                now = datetime.now()
-                valid_cache = {}
-                for ip, info in cache_data.items():
-                    cached_time = datetime.fromisoformat(info.get("cached_at", ""))
-                    if (now - cached_time).days < self.SAFE_IP_TTL_DAYS:
-                        valid_cache[ip] = info
-                self._safe_cache = valid_cache
-                logger.info(f"加载安全缓存: {len(self._safe_cache)} 个 IP")
-            except Exception as e:
-                logger.warning(f"加载安全缓存失败: {e}")
-
-    def _save_safe_cache(self):
-        if not self._safe_cache:
-            return
-        try:
-            self._safe_cache_file.parent.mkdir(parents=True, exist_ok=True)
-            with open(self._safe_cache_file, "w", encoding="utf-8") as f:
-                json.dump(self._safe_cache, f, indent=2, ensure_ascii=False)
-        except Exception as e:
-            logger.warning(f"保存安全缓存失败: {e}")
-
-    def _load_malicious_cache(self):
-        """加载恶意缓存（90天过期）"""
-        if self._malicious_cache_file.exists():
-            try:
-                with open(self._malicious_cache_file, encoding="utf-8") as f:
-                    cache_data = json.load(f)
-                now = datetime.now()
-                valid_cache = {}
-                for ip, info in cache_data.items():
-                    cached_time = datetime.fromisoformat(info.get("cached_at", ""))
-                    if (now - cached_time).days < 90:
-                        valid_cache[ip] = info
-                self._malicious_cache = valid_cache
-                logger.info(f"加载恶意缓存: {len(self._malicious_cache)} 个 IP")
-            except Exception as e:
-                logger.warning(f"加载恶意缓存失败: {e}")
-
-    def _save_malicious_cache(self):
-        if not self._malicious_cache:
-            return
-        try:
-            self._malicious_cache_file.parent.mkdir(parents=True, exist_ok=True)
-            with open(self._malicious_cache_file, "w", encoding="utf-8") as f:
-                json.dump(self._malicious_cache, f, indent=2, ensure_ascii=False)
-        except Exception as e:
-            logger.warning(f"保存恶意缓存失败: {e}")
+    def _check_cache(self, ip: str) -> tuple[Optional[dict], bool]:
+        """检查三层缓存"""
+        # 检查白名单
+        data = self._cache.get(ip, CacheLevel.WHITELIST)
+        if data:
+            self._cache_hits += 1
+            return data, True
+        
+        # 检查恶意缓存
+        data = self._cache.get(ip, CacheLevel.MALICIOUS)
+        if data:
+            self._cache_hits += 1
+            return data, True
+        
+        # 检查安全缓存
+        data = self._cache.get(ip, CacheLevel.SAFE)
+        if data:
+            self._cache_hits += 1
+            return data, True
+        
+        return None, False
 
     def detect_threats(self, df: pd.DataFrame) -> tuple[list[DetectionResult], list[dict]]:
         """检测网络流中的威胁 IP"""
@@ -143,8 +90,6 @@ class AbuseIPDBSmartDetector:
 
         results = []
         malicious_ips = []
-        whitelist_added = 0
-        safe_cached = 0
         checked_ips = set()
 
         for ip in external_ips:
@@ -156,10 +101,8 @@ class AbuseIPDBSmartDetector:
             cached_result, from_cache = self._check_cache(ip)
             if from_cache:
                 if cached_result.get("is_whitelist"):
-                    whitelist_added += 1
                     continue
                 elif cached_result.get("is_safe"):
-                    safe_cached += 1
                     continue
                 elif cached_result.get("is_malicious"):
                     malicious_ips.append(cached_result)
@@ -176,16 +119,18 @@ class AbuseIPDBSmartDetector:
             is_malicious = abuse_score >= ABUSE_SCORE_THREAT
             is_safe = abuse_score < ABUSE_SCORE_SAFE
 
+            cache_data = {**reputation, "cached_at": datetime.now().isoformat()}
+
             if is_safe and abuse_score == ABUSE_SCORE_WHITELIST and is_known_cloud:
-                self._whitelist[ip] = {**reputation, "is_whitelist": True, "is_safe": False, "is_malicious": False, "cached_at": datetime.now().isoformat()}
-                whitelist_added += 1
+                cache_data.update({"is_whitelist": True, "is_safe": False, "is_malicious": False})
+                self._cache.set(ip, cache_data, CacheLevel.WHITELIST)
             elif is_safe:
-                self._safe_cache[ip] = {**reputation, "is_whitelist": False, "is_safe": True, "is_malicious": False, "cached_at": datetime.now().isoformat()}
-                safe_cached += 1
+                cache_data.update({"is_whitelist": False, "is_safe": True, "is_malicious": False})
+                self._cache.set(ip, cache_data, CacheLevel.SAFE)
             elif is_malicious:
-                result = {**reputation, "is_whitelist": False, "is_safe": False, "is_malicious": True, "cached_at": datetime.now().isoformat()}
-                self._malicious_cache[ip] = result
-                malicious_ips.append(result)
+                cache_data.update({"is_whitelist": False, "is_safe": False, "is_malicious": True})
+                self._cache.set(ip, cache_data, CacheLevel.MALICIOUS)
+                malicious_ips.append(cache_data)
                 results.append(DetectionResult(
                     engine_name="abuseipdb_smart_detector",
                     engine_version="1.0.0",
@@ -198,31 +143,11 @@ class AbuseIPDBSmartDetector:
                     recommended_action="建议封禁该 IP 或进一步调查"
                 ))
 
-        self._save_whitelist()
-        self._save_safe_cache()
-        self._save_malicious_cache()
+        # 保存缓存
+        self._cache.save_all()
 
         logger.info(f"AbuseIPDB: 检查 {len(checked_ips)} 个 IP, API 查询 {self._query_count} 次, 发现 {len(malicious_ips)} 个恶意 IP")
         return results, malicious_ips
-
-    def _check_cache(self, ip: str) -> tuple[Optional[dict], bool]:
-        """检查三层缓存"""
-        if ip in self._whitelist:
-            self._cache_hits += 1
-            return self._whitelist[ip], True
-        if ip in self._malicious_cache:
-            cached = self._malicious_cache[ip]
-            cached_time = datetime.fromisoformat(cached.get("cached_at", ""))
-            if (datetime.now() - cached_time).days < 90:
-                self._cache_hits += 1
-                return cached, True
-        if ip in self._safe_cache:
-            cached = self._safe_cache[ip]
-            cached_time = datetime.fromisoformat(cached.get("cached_at", ""))
-            if (datetime.now() - cached_time).days < self.SAFE_IP_TTL_DAYS:
-                self._cache_hits += 1
-                return cached, True
-        return None, False
 
     def _query_api(self, ip: str) -> Optional[dict]:
         """查询 AbuseIPDB API"""
@@ -239,10 +164,16 @@ class AbuseIPDBSmartDetector:
         return None
 
     def get_stats(self) -> dict:
-        return {"whitelist_size": len(self._whitelist), "safe_cache_size": len(self._safe_cache), "api_queries": self._query_count, "cache_hits": self._cache_hits}
+        """获取统计信息"""
+        return {
+            "whitelist_size": self._cache.get_level_size(CacheLevel.WHITELIST),
+            "safe_cache_size": self._cache.get_level_size(CacheLevel.SAFE),
+            "malicious_cache_size": self._cache.get_level_size(CacheLevel.MALICIOUS),
+            "api_queries": self._query_count,
+            "cache_hits": self._cache_hits,
+        }
 
     def close(self):
+        """关闭检测器并保存缓存"""
         self.client.close()
-        self._save_whitelist()
-        self._save_safe_cache()
-        self._save_malicious_cache()
+        self._cache.save_all()

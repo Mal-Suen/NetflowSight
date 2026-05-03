@@ -45,13 +45,13 @@ class ThreatIntelligenceClient:
                     reports_count=data.get("totalReports", 0),
                 )
             elif response.status_code == 401:
-                logger.error("AbuseIPDB API 密钥无效")
+                logger.error("威胁情报 API 认证失败，请检查配置")
             elif response.status_code == 429:
-                logger.warning("AbuseIPDB API 请求频率超限")
+                logger.warning("威胁情报 API 请求频率超限")
             else:
-                logger.warning(f"AbuseIPDB 请求失败: {response.status_code}")
+                logger.warning(f"威胁情报 API 请求失败: HTTP {response.status_code}")
         except requests.RequestException as e:
-            logger.error(f"AbuseIPDB 查询异常: {e}")
+            logger.error(f"威胁情报查询异常: {type(e).__name__}")
 
         return None
 

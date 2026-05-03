@@ -8,10 +8,19 @@ from typing import Any
 
 import pandas as pd
 
+from core.config import settings
 from core.interfaces import DetectionResult, Severity, ThreatType
 from ml.domain_classifier import DomainClassifier
 
 logger = logging.getLogger(__name__)
+
+
+# 默认检测配置
+DEFAULT_CONFIG = {
+    "dns_tunnel_threshold": 20,      # DNS 隧道包数阈值
+    "dga_entropy_threshold": 3.5,    # DGA 熵值阈值
+    "min_domain_length_for_dga": 10, # DGA 检测的最小域名长度
+}
 
 
 class DNSThreatDetector:
@@ -23,19 +32,15 @@ class DNSThreatDetector:
     enabled = True
 
     def __init__(self, safe_domains: set[str] | None = None, config: dict | None = None):
-        default_safe = {
-            "google.com", "googleapis.com", "gstatic.com", "googleusercontent.com",
-            "microsoft.com", "windows.com", "azure.com", "apple.com", "icloud.com",
-            "amazonaws.com", "cloudfront.net", "cloudflare.com", "github.com",
-            "facebook.com", "fbcdn.net", "twitter.com", "linkedin.com",
-        }
-        self.safe_domains = safe_domains if safe_domains is not None else default_safe
-        self.config = config or self._default_config()
+        # 使用配置文件中的安全域名，或使用传入的域名
+        if safe_domains is not None:
+            self.safe_domains = safe_domains
+        else:
+            # 从配置加载安全域名
+            self.safe_domains = settings.load_safe_domains()
+        
+        self.config = config or DEFAULT_CONFIG.copy()
         self.domain_classifier = DomainClassifier()
-
-    @staticmethod
-    def _default_config() -> dict[str, Any]:
-        return {"dns_tunnel_threshold": 20, "dga_entropy_threshold": 3.5}
 
     def run(self, df: pd.DataFrame, context: dict | None = None,
             threat_domains: set[str] | None = None) -> list[DetectionResult]:

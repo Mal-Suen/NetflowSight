@@ -37,11 +37,11 @@ class ThreatBookClient:
                 if data.get("response_code") == 0:
                     return self._parse_domain_result(domain, data.get("data", {}))
             elif response.status_code == 401:
-                logger.error("ThreatBook API Key 无效")
+                logger.error("威胁情报 API 认证失败，请检查配置")
             elif response.status_code == 429:
-                logger.warning("ThreatBook API 请求频率超限")
+                logger.warning("威胁情报 API 请求频率超限")
         except requests.RequestException as e:
-            logger.error(f"ThreatBook 查询异常: {e}")
+            logger.error(f"威胁情报查询异常: {type(e).__name__}")
 
         return None
 
@@ -60,7 +60,7 @@ class ThreatBookClient:
                 if data.get("response_code") == 0:
                     return self._parse_ip_result(ip, data.get("data", {}))
         except requests.RequestException as e:
-            logger.error(f"ThreatBook 查询异常: {e}")
+            logger.error(f"威胁情报查询异常: {type(e).__name__}")
 
         return None
 
