@@ -1,4 +1,4 @@
-# 🔍 NetflowSight
+﻿# 🔍 NetflowSight
 
 > **AI-Powered Network Traffic Analysis Platform** | **AI 驱动的网络流量分析平台**
 
@@ -293,7 +293,7 @@ python -m cli analyze <pcap文件>
 
 # 选项
 --output, -o          指定输出报告路径
---format, -f          报告格式: html(默认), json, markdown, text
+--format, -f          报告格式： html(默认), json, markdown, text
 --no-ml               禁用 ML 异常检测
 --no-threat-intel     禁用威胁情报 API 调用
 --verbose, -v         启用详细日志输出
